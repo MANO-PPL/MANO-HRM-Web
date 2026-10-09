@@ -6,23 +6,42 @@ import { authLimiter, loginIpLimiter, passwordResetLimiter } from '../../middlew
 
 const router = express.Router();
 
-// Captcha
+// ==========================================
+// CAPTCHA
+// ==========================================
 router.get("/captcha/generate", generateCaptcha);
 
-// Public Routes (Rate-Limited)
+// ==========================================
+// 1. AUTHENTICATION & IDENTITY
+// ==========================================
 router.post('/login', loginIpLimiter, authLimiter, verifyCaptcha, authController.login);
 router.post('/super-admin/login', loginIpLimiter, authLimiter, authController.superAdminLogin);
+router.post('/logout', authController.logout);
+router.get('/me', authenticateJWT, authController.getCurrentUser);
+
+// ==========================================
+// 2. TOKEN REFRESH & SESSION LIFECYCLE
+// ==========================================
+router.post('/refresh', authController.refreshToken);
+
+// ==========================================
+// 3. PASSWORD MANAGEMENT & RECOVERY
+// ==========================================
 router.post('/forgot-password', passwordResetLimiter, authController.requestPasswordReset);
 router.post('/verify-otp', authLimiter, authController.verifyOtp);
 router.post('/reset-password', authLimiter, authController.resetPassword);
-router.post('/onboard', authLimiter, authController.onboardOrganization);
-
-// Token / Session
-router.post('/refresh', authController.refreshToken);
-router.post('/logout', authController.logout);
-
-// Protected Auth Details
-router.get('/me', authenticateJWT, authController.getCurrentUser);
 router.post('/change-password', authenticateJWT, authController.changePassword);
+
+// ==========================================
+// 4. USER ACTIVE SESSIONS (SELF-SERVICE)
+// ==========================================
+router.get('/sessions', authenticateJWT, authController.getUserSessions);
+router.post('/sessions/:id/revoke', authenticateJWT, authController.revokeUserSession);
+router.post('/sessions/revoke-others', authenticateJWT, authController.revokeOtherUserSessions);
+
+// ==========================================
+// 5. ORGANIZATION SELF-ONBOARDING
+// ==========================================
+router.post('/onboard', authLimiter, authController.onboardOrganization);
 
 export default router;

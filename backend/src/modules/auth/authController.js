@@ -3,15 +3,26 @@ import * as authService from './authService.js';
 import AppError from '../../utils/AppError.js';
 import { attendanceDB } from '../../config/database.js';
 import bcrypt from 'bcrypt';
+import { extractDeviceInfo } from '../../utils/deviceParser.js';
 
-const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 Days
+// ==========================================
+// CONFIGURATION & HELPERS
+// ==========================================
+
+const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 Days (Standard User)
+const SUPER_ADMIN_COOKIE_MAX_AGE = 30 * 60 * 1000;             // 30 Minutes (SuperAdmin AFK / Inactivity timeout)
+const IS_PROD = process.env.NODE_ENV === 'production';
 
 // The mobile apps send the refresh token in the body or X-Refresh-Token header,
 // the web app as an httpOnly cookie. A token sent explicitly wins: an app's
 // cookie store may still hold a cookie from an earlier login.
 const readRefreshToken = (req) =>
     req.body?.refreshToken || req.headers['x-refresh-token'] || req.cookies.refreshToken || null;
-const IS_PROD = process.env.NODE_ENV === 'production';
+
+
+// ==========================================
+// 1. STANDARD USER AUTHENTICATION
+// ==========================================
 
 export const login = catchAsync(async (req, res, next) => {
     const { user_input, user_password, captchaToken, rememberMe } = req.body;
@@ -22,7 +33,8 @@ export const login = catchAsync(async (req, res, next) => {
 
     const reqInfo = {
         ip: req.clientIp || req.ip,
-        userAgent: req.get('User-Agent') || 'Unknown'
+        userAgent: req.get('User-Agent') || 'Unknown',
+        deviceInfo: extractDeviceInfo(req)
     };
 
     const isRememberMe = rememberMe === undefined ? true : (rememberMe === true || rememberMe === 'true');
@@ -41,9 +53,27 @@ export const login = catchAsync(async (req, res, next) => {
     }
 
     res.cookie('refreshToken', refreshToken, cookieOptions);
-
     res.status(200).json({ accessToken, refreshToken, user });
 });
+
+export const getCurrentUser = catchAsync(async (req, res, next) => {
+    // req.user comes from authenticateJWT middleware
+    const user = await authService.getCurrentUser(req.user.user_id, req.user.user_type);
+    res.json(user);
+});
+
+export const logout = catchAsync(async (req, res, next) => {
+    const refreshToken = readRefreshToken(req);
+    await authService.logoutUser(refreshToken);
+
+    res.clearCookie("refreshToken", { path: '/' });
+    res.json({ message: "Logged out successfully" });
+});
+
+
+// ==========================================
+// 2. SUPER ADMIN AUTHENTICATION
+// ==========================================
 
 export const superAdminLogin = catchAsync(async (req, res, next) => {
     const { email, password } = req.body;
@@ -55,16 +85,62 @@ export const superAdminLogin = catchAsync(async (req, res, next) => {
     const reqInfo = { ip: req.clientIp || req.ip, userAgent: req.get('User-Agent') || 'Unknown' };
     const { accessToken, refreshToken, user } = await authService.authenticateSuperAdmin(email, password, reqInfo);
 
+    // SuperAdmin uses a short-lived 30-minute session cookie that slides if active
     res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: IS_PROD,
         sameSite: 'Lax',
-        maxAge: 12 * 60 * 60 * 1000,
+        maxAge: SUPER_ADMIN_COOKIE_MAX_AGE,
         path: '/'
     });
 
     res.status(200).json({ accessToken, refreshToken, user });
 });
+
+
+// ==========================================
+// 3. TOKEN REFRESH & SESSION LIFECYCLE
+// ==========================================
+
+export const refreshToken = catchAsync(async (req, res, next) => {
+    const currentRefreshToken = readRefreshToken(req);
+
+    const reqInfo = {
+        ip: req.clientIp || req.ip,
+        userAgent: req.get('User-Agent') || 'Unknown',
+        deviceInfo: extractDeviceInfo(req)
+    };
+
+    try {
+        const { accessToken, refreshToken: newRefreshToken, rememberMe, isSuperAdmin } = await authService.refreshAuthTokens(currentRefreshToken, reqInfo);
+
+        const cookieOptions = {
+            httpOnly: true,
+            secure: IS_PROD,
+            sameSite: 'Lax',
+            path: '/'
+        };
+
+        if (isSuperAdmin) {
+            cookieOptions.maxAge = SUPER_ADMIN_COOKIE_MAX_AGE;
+        } else if (rememberMe === true || rememberMe === 'true') {
+            cookieOptions.maxAge = REFRESH_TOKEN_COOKIE_MAX_AGE;
+        }
+
+        res.cookie('refreshToken', newRefreshToken, cookieOptions);
+        res.json({ accessToken, refreshToken: newRefreshToken });
+    } catch (err) {
+        if (err.statusCode === 401 || err.statusCode === 403) {
+            res.clearCookie('refreshToken', { path: '/' });
+        }
+        throw err;
+    }
+});
+
+
+// ==========================================
+// 4. PASSWORD RECOVERY & MANAGEMENT
+// ==========================================
 
 export const requestPasswordReset = catchAsync(async (req, res, next) => {
     const { email } = req.body;
@@ -100,52 +176,69 @@ export const resetPassword = catchAsync(async (req, res, next) => {
     res.json({ message: "Password reset successfully. You can now login." });
 });
 
-export const refreshToken = catchAsync(async (req, res, next) => {
-    const currentRefreshToken = readRefreshToken(req);
+export const changePassword = catchAsync(async (req, res, next) => {
+    const { newPassword } = req.body;
+    const userId = req.user.user_id || req.user.id;
 
-    const reqInfo = {
-        ip: req.clientIp || req.ip,
-        userAgent: req.get('User-Agent') || 'Unknown'
-    };
-
-    try {
-        const { accessToken, refreshToken: newRefreshToken, rememberMe } = await authService.refreshAuthTokens(currentRefreshToken, reqInfo);
-
-        const cookieOptions = {
-            httpOnly: true,
-            secure: IS_PROD,
-            sameSite: 'Lax',
-            path: '/'
-        };
-
-        if (rememberMe === true || rememberMe === 'true') {
-            cookieOptions.maxAge = REFRESH_TOKEN_COOKIE_MAX_AGE;
-        }
-
-        res.cookie('refreshToken', newRefreshToken, cookieOptions);
-
-        res.json({ accessToken, refreshToken: newRefreshToken });
-    } catch (err) {
-        if (err.statusCode === 401 || err.statusCode === 403) {
-            res.clearCookie('refreshToken', { path: '/' });
-        }
-        throw err; // Passed to the global error handler which will send the AppError
+    if (!newPassword) {
+        throw new AppError("New password is required", 400);
     }
+
+    const currentRefreshToken = readRefreshToken(req);
+    await authService.changePassword(userId, newPassword, currentRefreshToken, req.user.sid);
+
+    res.status(200).json({
+        success: true,
+        message: "Password changed successfully."
+    });
 });
 
-export const getCurrentUser = catchAsync(async (req, res, next) => {
-    // `req.user` comes from authenticateJWT middleware
-    const user = await authService.getCurrentUser(req.user.user_id, req.user.user_type);
-    res.json(user);
+
+// ==========================================
+// 5. USER ACTIVE SESSIONS (SELF-SERVICE)
+// ==========================================
+
+export const getUserSessions = catchAsync(async (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const userId = req.user.user_id || req.user.id;
+    const currentRefreshToken = req.cookies.refreshToken || req.headers['x-refresh-token'];
+    const currentSessionId = req.user?.sid;
+    const sessions = await authService.getUserActiveSessions(userId, currentRefreshToken, currentSessionId);
+    res.status(200).json({
+        status: 'success',
+        data: sessions
+    });
 });
 
-export const logout = catchAsync(async (req, res, next) => {
-    const refreshToken = readRefreshToken(req);
-    await authService.logoutUser(refreshToken);
-
-    res.clearCookie("refreshToken", { path: '/' });
-    res.json({ message: "Logged out successfully" });
+export const revokeUserSession = catchAsync(async (req, res, next) => {
+    const userId = req.user.user_id || req.user.id;
+    const { id } = req.params;
+    const result = await authService.revokeUserSession(userId, Number(id));
+    res.status(200).json({
+        status: 'success',
+        message: result.message
+    });
 });
+
+export const revokeOtherUserSessions = catchAsync(async (req, res, next) => {
+    const userId = req.user.user_id || req.user.id;
+    const currentRefreshToken = req.cookies.refreshToken || req.headers['x-refresh-token'];
+    const currentSessionId = req.user?.sid;
+    const result = await authService.revokeOtherUserSessions(userId, currentRefreshToken, currentSessionId);
+    res.status(200).json({
+        status: 'success',
+        count: result.count,
+        message: result.message
+    });
+});
+
+
+// ==========================================
+// 6. ORGANIZATION SELF-ONBOARDING
+// ==========================================
 
 export const onboardOrganization = catchAsync(async (req, res, next) => {
     const {
@@ -253,22 +346,5 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
         org_id: insertedId,
         user_code: `${cleanOrgCode}-001`,
         email: finalAdminEmail.trim().toLowerCase()
-    });
-});
-
-export const changePassword = catchAsync(async (req, res, next) => {
-    const { newPassword } = req.body;
-    const userId = req.user.user_id || req.user.id;
-
-    if (!newPassword) {
-        throw new AppError("New password is required", 400);
-    }
-
-    const currentRefreshToken = readRefreshToken(req);
-    await authService.changePassword(userId, newPassword, currentRefreshToken, req.user.sid);
-
-    res.status(200).json({
-        success: true,
-        message: "Password changed successfully."
     });
 });

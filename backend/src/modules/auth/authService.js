@@ -4,12 +4,17 @@ import jwt from 'jsonwebtoken';
 import { attendanceDB } from '../../config/database.js';
 import EventBus from '../../utils/EventBus.js';
 import AppError from '../../utils/AppError.js';
-import * as TokenService from './tokenService.js';
+import * as sessionService from './sessionService.js';
 import { evaluateOrgStatus } from '../organisations/orgAccessPolicy.js';
 import OtpService from './OtpService.js';
 import { sendEmail } from './emailService.js';
 
+// ==========================================
+// CONFIGURATION & TOKEN SECRETS
+// ==========================================
+
 const ACCESS_TOKEN_EXPIRY = '15m';
+const SUPER_ADMIN_REFRESH_TOKEN_EXPIRY = '30m';
 const PASSWORD_MIN_LENGTH = 8;
 const BCRYPT_ROUNDS = 12;
 
@@ -33,6 +38,15 @@ function consumeResetTokenId(jti, expSeconds) {
     usedResetTokenIds.set(jti, expSeconds * 1000);
     return true;
 }
+
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+
+// ==========================================
+// 1. STANDARD USER AUTHENTICATION
+// ==========================================
 
 export const authenticateUser = async (userInput, password, reqInfo, rememberMe = false) => {
     const user = await attendanceDB('core_users')
@@ -93,8 +107,15 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
         force_password_change: isForcePasswordChange
     };
 
-    const refreshToken = TokenService.generateRefreshToken();
-    const sessionId = await TokenService.saveRefreshToken(user.user_id, refreshToken, reqInfo.ip, reqInfo.userAgent, rememberMe);
+    const refreshToken = sessionService.generateToken();
+    const sessionId = await sessionService.createSession({
+        userId: user.user_id,
+        token: refreshToken,
+        ipAddress: reqInfo.ip,
+        userAgent: reqInfo.userAgent,
+        rememberMe,
+        deviceInfo: reqInfo.deviceInfo
+    });
 
     // sid identifies this login session (see changePassword)
     const accessToken = jwt.sign({ ...tokenPayload, sid: sessionId }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
@@ -134,120 +155,6 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
             isOrgExpired: isOrgExpired,
             org_status: orgStatus
         }
-    };
-};
-
-export const authenticateSuperAdmin = async (email, password, reqInfo) => {
-    const admin = await attendanceDB('core_super_admins').where('email', email).first();
-    if (!admin) throw new AppError('Invalid credentials', 401);
-    if (!admin.is_active) throw new AppError('Your account is inactive.', 403);
-
-    const isMatch = await bcrypt.compare(password, admin.password_hash);
-    if (!isMatch) throw new AppError('Invalid credentials', 401);
-
-    const tokenPayload = {
-        user_id: admin.id,
-        user_name: admin.name,
-        email: admin.email,
-        user_type: 'super_admin'
-    };
-
-    const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
-    const refreshTokenPayload = { id: admin.id, user_type: 'super_admin_refresh' };
-    const refreshToken = jwt.sign(refreshTokenPayload, process.env.JWT_REFRESH_SECRET, { expiresIn: '12h' });
-
-    try {
-        EventBus.emitActivityLog({
-            user_id: admin.id,
-            org_id: null,
-            event_type: "LOGIN",
-            event_source: "API",
-            object_type: "ADMIN",
-            object_id: admin.id,
-            description: "Super Admin logged in",
-            request_ip: reqInfo.ip,
-            user_agent: reqInfo.userAgent
-        });
-    } catch (err) { }
-
-    return {
-        accessToken,
-        refreshToken,
-        user: {
-            id: admin.id,
-            user_name: admin.name,
-            email: admin.email,
-            user_type: 'super_admin',
-        }
-    };
-};
-
-export const refreshAuthTokens = async (refreshToken, reqInfo) => {
-    if (!refreshToken) throw new AppError("No refresh token provided", 401, "NO_REFRESH_TOKEN");
-
-    try {
-        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
-        if (decoded.user_type === 'super_admin_refresh') {
-            const admin = await attendanceDB('core_super_admins').where('id', decoded.id).first();
-            if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403, "ADMIN_INACTIVE");
-
-            const tokenPayload = {
-                user_id: admin.id,
-                user_name: admin.name,
-                email: admin.email,
-                user_type: 'super_admin'
-            };
-            const newAccessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
-            const newRefreshToken = jwt.sign({ id: admin.id, user_type: 'super_admin_refresh' }, process.env.JWT_REFRESH_SECRET, { expiresIn: '12h' });
-            return { accessToken: newAccessToken, refreshToken: newRefreshToken, rememberMe: false };
-        }
-    } catch (err) {
-        if (err.name === 'TokenExpiredError') throw new AppError("Session expired. Please re-login.", 401, "SESSION_EXPIRED");
-        // Important: if jwt.verify failed for other reasons (e.g standard user's non-jwt token), let it fall through
-    }
-
-    const result = await TokenService.verifyRefreshToken(refreshToken);
-
-    if (!result) throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
-
-    // The user was deactivated or deleted; their sessions have been ended
-    if (result.error) throw new AppError("Your account is inactive or has been deleted. Please contact HR.", 401, "ACCOUNT_INACTIVE");
-
-    const { user, refreshTokenRecord } = result;
-
-    if (user.org_id) {
-        const org = await attendanceDB('core_organizations').where('org_id', user.org_id).first();
-        if (!org || org.status === 'pending_deletion') {
-            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403, "ORG_DELETED");
-        }
-
-        const { status: orgStatus } = evaluateOrgStatus(org);
-
-        if (orgStatus !== 'active' && user.user_type !== 'admin') {
-            throw new AppError(`Access Denied: Your organization account is currently ${orgStatus}.`, 403, "ORG_INACTIVE");
-        }
-    }
-
-    // Sliding Session: Instead of rotating the token, just extend its expiry
-    await TokenService.extendRefreshToken(refreshToken);
-    const newRefreshToken = refreshToken;
-
-    const tokenPayload = {
-        user_id: user.user_id,
-        user_name: user.user_name,
-        email: user.email,
-        user_type: user.user_type,
-        org_id: user.org_id,
-        profile_image_url: user.profile_image_url,
-        force_password_change: user.force_password_change === 1 || user.force_password_change === '1' || user.force_password_change === true || user.force_password_change === 'true'
-    };
-
-    const newAccessToken = jwt.sign({ ...tokenPayload, sid: refreshTokenRecord.id }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
-
-    return {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-        rememberMe: refreshTokenRecord?.remember_me == 1 || refreshTokenRecord?.remember_me === true
     };
 };
 
@@ -318,13 +225,137 @@ export const getCurrentUser = async (userId, userType) => {
 
 export const logoutUser = async (refreshToken) => {
     if (refreshToken) {
-        await TokenService.revokeRefreshToken(refreshToken);
+        await sessionService.revokeSession({ token: refreshToken, reason: 'logout' });
     }
 };
 
-const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-));
+
+// ==========================================
+// 2. SUPER ADMIN AUTHENTICATION
+// ==========================================
+
+export const authenticateSuperAdmin = async (email, password, reqInfo) => {
+    const admin = await attendanceDB('core_super_admins').where('email', email).first();
+    if (!admin) throw new AppError('Invalid credentials', 401);
+    if (!admin.is_active) throw new AppError('Your account is inactive.', 403);
+
+    const isMatch = await bcrypt.compare(password, admin.password_hash);
+    if (!isMatch) throw new AppError('Invalid credentials', 401);
+
+    const tokenPayload = {
+        user_id: admin.id,
+        user_name: admin.name,
+        email: admin.email,
+        user_type: 'super_admin'
+    };
+
+    const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+    const refreshTokenPayload = { id: admin.id, user_type: 'super_admin_refresh' };
+    const refreshToken = jwt.sign(refreshTokenPayload, process.env.JWT_REFRESH_SECRET, { expiresIn: SUPER_ADMIN_REFRESH_TOKEN_EXPIRY });
+
+    try {
+        EventBus.emitActivityLog({
+            user_id: admin.id,
+            org_id: null,
+            event_type: "LOGIN",
+            event_source: "API",
+            object_type: "ADMIN",
+            object_id: admin.id,
+            description: "Super Admin logged in",
+            request_ip: reqInfo.ip,
+            user_agent: reqInfo.userAgent
+        });
+    } catch (err) { }
+
+    return {
+        accessToken,
+        refreshToken,
+        user: {
+            id: admin.id,
+            user_name: admin.name,
+            email: admin.email,
+            user_type: 'super_admin',
+        }
+    };
+};
+
+
+// ==========================================
+// 3. TOKEN REFRESH & SESSION LIFECYCLE
+// ==========================================
+
+export const refreshAuthTokens = async (refreshToken, reqInfo) => {
+    if (!refreshToken) throw new AppError("No refresh token provided", 401, "NO_REFRESH_TOKEN");
+
+    // SuperAdmin uses stateless JWT refresh tokens with sliding 30-min window
+    try {
+        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
+        if (decoded.user_type === 'super_admin_refresh') {
+            const admin = await attendanceDB('core_super_admins').where('id', decoded.id).first();
+            if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403, "ADMIN_INACTIVE");
+
+            const tokenPayload = {
+                user_id: admin.id,
+                user_name: admin.name,
+                email: admin.email,
+                user_type: 'super_admin'
+            };
+            const newAccessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+            const newRefreshToken = jwt.sign({ id: admin.id, user_type: 'super_admin_refresh' }, process.env.JWT_REFRESH_SECRET, { expiresIn: SUPER_ADMIN_REFRESH_TOKEN_EXPIRY });
+            return { accessToken: newAccessToken, refreshToken: newRefreshToken, rememberMe: false, isSuperAdmin: true };
+        }
+    } catch (err) {
+        if (err.name === 'TokenExpiredError') throw new AppError("Session expired. Please re-login.", 401, "SESSION_EXPIRED");
+        // Non-JWT tokens from regular users fall through to DB session validation
+    }
+
+    // Standard Users: Database-backed session validation
+    const result = await sessionService.validateSession(refreshToken);
+
+    if (!result) throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
+    if (result.error) throw new AppError("Your account is inactive or has been deleted. Please contact HR.", 401, "ACCOUNT_INACTIVE");
+
+    const { user, session } = result;
+
+    if (user.org_id) {
+        const org = await attendanceDB('core_organizations').where('org_id', user.org_id).first();
+        if (!org || org.status === 'pending_deletion') {
+            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403, "ORG_DELETED");
+        }
+
+        const { status: orgStatus } = evaluateOrgStatus(org);
+        if (orgStatus !== 'active' && user.user_type !== 'admin') {
+            throw new AppError(`Access Denied: Your organization account is currently ${orgStatus}.`, 403, "ORG_INACTIVE");
+        }
+    }
+
+    // Sliding Session: Extend 30-day expiry and update active IP
+    await sessionService.extendSession(refreshToken, reqInfo);
+    const newRefreshToken = refreshToken;
+
+    const tokenPayload = {
+        user_id: user.user_id,
+        user_name: user.user_name,
+        email: user.email,
+        user_type: user.user_type,
+        org_id: user.org_id,
+        profile_image_url: user.profile_image_url,
+        force_password_change: user.force_password_change === 1 || user.force_password_change === '1' || user.force_password_change === true || user.force_password_change === 'true'
+    };
+
+    const newAccessToken = jwt.sign({ ...tokenPayload, sid: session.id }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+
+    return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        rememberMe: session?.remember_me == 1 || session?.remember_me === true
+    };
+};
+
+
+// ==========================================
+// 4. PASSWORD RESET & OTP RECOVERY
+// ==========================================
 
 // Answers the same way whether or not the email belongs to an account, so the
 // endpoint cannot be used to find out which emails are registered.
@@ -398,10 +429,15 @@ export const executePasswordReset = async (resetToken, newPassword) => {
     await attendanceDB("core_users").where("user_id", decoded.user_id).update({ user_password: hashedPassword });
 
     // A reset means the old password may be compromised: end every session
-    await TokenService.revokeAllTokensForUser(decoded.user_id);
+    await sessionService.revokeAllSessions(decoded.user_id, { reason: 'password_reset' });
 
     return true;
 };
+
+
+// ==========================================
+// 5. PASSWORD MANAGEMENT
+// ==========================================
 
 export const changePassword = async (userId, newPassword, currentRefreshToken = null, currentSessionId = null) => {
     if (!newPassword || newPassword.length < PASSWORD_MIN_LENGTH) {
@@ -414,6 +450,39 @@ export const changePassword = async (userId, newPassword, currentRefreshToken = 
     });
 
     // Sign out all other devices; keep the session that made the change
-    await TokenService.revokeAllTokensForUser(userId, { except: currentRefreshToken, exceptSessionId: currentSessionId });
+    await sessionService.revokeAllSessions(userId, {
+        exceptToken: currentRefreshToken,
+        exceptSessionId: currentSessionId,
+        reason: 'password_change'
+    });
     return true;
+};
+
+
+// ==========================================
+// 6. USER ACTIVE SESSIONS (SELF-SERVICE)
+// ==========================================
+
+export const getUserActiveSessions = async (userId, currentRefreshToken = null, currentSessionId = null) => {
+    return await sessionService.listSessions({
+        userId,
+        currentToken: currentRefreshToken,
+        currentSessionId
+    });
+};
+
+export const revokeUserSession = async (userId, sessionId) => {
+    return await sessionService.revokeSession({
+        sessionId,
+        userId,
+        reason: 'user_self_service'
+    });
+};
+
+export const revokeOtherUserSessions = async (userId, currentRefreshToken, currentSessionId = null) => {
+    return await sessionService.revokeAllSessions(userId, {
+        exceptToken: currentRefreshToken,
+        exceptSessionId: currentSessionId,
+        reason: 'user_revoke_others'
+    });
 };

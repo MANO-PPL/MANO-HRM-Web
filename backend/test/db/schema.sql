@@ -380,20 +380,30 @@ CREATE TABLE `core_organizations` (
   KEY `idx_core_organizations_deletion_requested_by` (`deletion_requested_by`),
   CONSTRAINT `fk_core_organizations_super_admins_deletion_requested_by` FOREIGN KEY (`deletion_requested_by`) REFERENCES `core_super_admins` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-CREATE TABLE `core_refresh_tokens` (
-  `id` int NOT NULL AUTO_INCREMENT,
+CREATE TABLE `sessions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
   `user_id` int unsigned NOT NULL,
-  `token` varchar(512) NOT NULL,
-  `expires_at` datetime NOT NULL,
-  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-  `revoked` tinyint(1) DEFAULT '0',
-  `replaced_by_token` varchar(512) DEFAULT NULL,
+  `token_hash` varchar(64) NOT NULL,
+  `device_id` varchar(128) NOT NULL DEFAULT '',
+  `device_name` varchar(255) DEFAULT NULL,
+  `device_type` varchar(50) NOT NULL DEFAULT 'desktop',
+  `os` varchar(100) DEFAULT NULL,
+  `browser` varchar(100) DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
-  `user_agent` text,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_used_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` datetime NOT NULL,
+  `revoked` tinyint(1) NOT NULL DEFAULT '0',
+  `revoked_at` datetime DEFAULT NULL,
+  `revoked_reason` varchar(255) DEFAULT NULL,
   `remember_me` tinyint(1) NOT NULL DEFAULT '0',
+  `user_agent` text,
   PRIMARY KEY (`id`),
-  KEY `idx_core_refresh_tokens_user_id` (`user_id`),
-  CONSTRAINT `fk_core_refresh_tokens_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+  KEY `idx_sessions_user_id` (`user_id`),
+  KEY `idx_sessions_token_hash` (`token_hash`),
+  KEY `idx_sessions_user_device` (`user_id`, `device_id`),
+  KEY `idx_sessions_status` (`revoked`, `expires_at`),
+  CONSTRAINT `fk_sessions_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `core_subscription_history` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,

@@ -18,7 +18,8 @@ import {
     Code,
     Hammer,
     HelpCircle,
-    Terminal
+    Terminal,
+    KeyRound
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTour } from '../context/TourContext';
@@ -67,6 +68,7 @@ export const getNavItems = (userType) => {
             { icon: <TrendingUp size={18} />, text: "API Analytics", to: "/super-admin/api-analytics" },
             { icon: <Code size={18} />, text: "System Logs", to: "/super-admin/logs" },
             { icon: <Terminal size={18} />, text: "Debug Console", to: "/super-admin/debug" },
+            { icon: <KeyRound size={18} />, text: "Session Management", to: "/super-admin/sessions" },
             { icon: <MessageSquare size={18} />, text: "User Feedback", to: "/super-admin/feedback" },
         ];
     }

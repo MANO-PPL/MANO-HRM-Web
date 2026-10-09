@@ -43,9 +43,11 @@ const post = (path, { body, cookie, bearer } = {}) => fetch(`${baseUrl}${path}`,
 const webRefresh = (token) => post('/auth/refresh', { cookie: token });
 const appRefresh = (token) => post('/auth/refresh', { body: { refreshToken: token } });
 
-async function newSession(userId) {
+let devCounter = 0;
+async function newSession(userId, userAgent = null) {
     const token = TokenService.generateRefreshToken();
-    await TokenService.saveRefreshToken(userId, token, '127.0.0.1', 'test');
+    const ua = userAgent || `test-device-${++devCounter}`;
+    await TokenService.saveRefreshToken(userId, token, '127.0.0.1', ua);
     return token;
 }
 
@@ -71,7 +73,7 @@ test('refreshed access tokens carry the session id', async () => {
     const phone = await newSession(ids.empB);
     const { accessToken } = await (await appRefresh(phone)).json();
     const { sid } = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString());
-    const row = await db('core_refresh_tokens').where({ token: TokenService.hashRefreshToken(phone) }).first();
+    const row = await (db('sessions').where({ token_hash: TokenService.hashRefreshToken(phone) }).first());
     assert.equal(sid, row.id);
 });
 

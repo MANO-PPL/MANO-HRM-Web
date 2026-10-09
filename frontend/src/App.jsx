@@ -55,6 +55,7 @@ import UserFeedback from "./pages/super-admin/UserFeedback"
 import PM2LogsConsole from "./pages/super-admin/PM2LogsConsole"
 import APIAnalytics from "./pages/super-admin/APIAnalytics"
 import DebugConsole from "./pages/super-admin/DebugConsole"
+import SessionManagement from "./pages/super-admin/SessionManagement"
 
 // Mobile View Imports
 
@@ -88,6 +89,7 @@ import SuperAdminDashboardMobile from "./pages/dashboard/SuperAdminDashboard-mv"
 import OrganizationListMobile from "./pages/organizations/OrganizationList-mv";
 import SecurityAlertsMobile from "./pages/super-admin/SecurityAlerts-mv";
 import UserFeedbackMobile from "./pages/super-admin/UserFeedback-mv";
+import SessionManagementMobile from "./pages/super-admin/SessionManagement-mv";
 import MobileChatPage from "./pages/collaboration/ChatPage-mv";
 import MobileLabourManagement from "./pages/labour/MobileLabourManagement";
 
@@ -370,6 +372,7 @@ function App() {
                   <Route path="/super-admin/logs" element={<ResponsiveRoute DesktopComponent={PM2LogsConsole} MobileComponent={PM2LogsConsole} />} />
                   <Route path="/super-admin/api-analytics" element={<ResponsiveRoute DesktopComponent={APIAnalytics} MobileComponent={APIAnalytics} />} />
                   <Route path="/super-admin/debug" element={<ResponsiveRoute DesktopComponent={DebugConsole} MobileComponent={DebugConsole} />} />
+                  <Route path="/super-admin/sessions" element={<ResponsiveRoute DesktopComponent={SessionManagement} MobileComponent={SessionManagementMobile} />} />
                 </Route>
               </Route>
 

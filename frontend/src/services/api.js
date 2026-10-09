@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { getErrorMessage } from '../utils/errorMessage';
+import { getPersistentDeviceId, getFriendlyDeviceName } from '../utils/deviceIdentifier';
 
 // Create axios instance
 const api = axios.create({
@@ -50,12 +51,45 @@ export const clearApiCache = () => {
     }
 };
 
+export const removeCacheByUrl = (urlPattern) => {
+    try {
+        const cache = getCache();
+        let changed = false;
+        Object.keys(cache).forEach(k => {
+            if (k.includes(urlPattern)) {
+                delete cache[k];
+                changed = true;
+            }
+        });
+        if (changed) saveCache(cache);
+    } catch (e) {
+        console.warn('Failed to remove cache by url:', e);
+    }
+};
+
 const originalAdapter = api.defaults.adapter || axios.defaults.adapter;
 
 api.defaults.adapter = async (config) => {
     const isGet = config.method?.toLowerCase() === 'get';
-    const excludeUrls = ['/auth/me', '/auth/refresh', '/auth/logout', '/payroll', '/attendance'];
-    const shouldCache = isGet && !excludeUrls.some(url => config.url?.includes(url)) && !config.headers?.['x-skip-cache'] && !config.params?.force;
+    const isSkipCache = Boolean(
+        config.skipCache || 
+        config.headers?.['x-skip-cache'] || 
+        config.headers?.['Cache-Control']?.includes('no-cache') || 
+        config.params?._t ||
+        config.params?.force
+    );
+    const excludeUrls = [
+        '/auth/me', 
+        '/auth/refresh', 
+        '/auth/logout', 
+        '/auth/sessions',
+        '/super-admin',
+        'super-admin',
+        'sessions',
+        '/payroll',
+        '/attendance'
+    ];
+    const shouldCache = isGet && !isSkipCache && !excludeUrls.some(url => config.url?.includes(url));
 
     const getResolvedAdapter = () => {
         const targetAdapter = (config.adapter && config.adapter !== api.defaults.adapter)
@@ -66,6 +100,25 @@ api.defaults.adapter = async (config) => {
         }
         return targetAdapter;
     };
+
+    if (isSkipCache || !shouldCache) {
+        try {
+            const rawUrl = config.url || '';
+            const cacheKeyFragment = rawUrl.replace(/^\//, '');
+            if (cacheKeyFragment) {
+                const cache = getCache();
+                let changed = false;
+                Object.keys(cache).forEach(k => {
+                    if (k.includes(cacheKeyFragment) || k.includes(rawUrl)) {
+                        delete cache[k];
+                        changed = true;
+                    }
+                });
+                if (changed) saveCache(cache);
+            }
+        } catch (_) {}
+    }
+
 
     if (shouldCache) {
         const cacheKey = `${config.url || ''}?${JSON.stringify(config.params || {})}`;
@@ -144,6 +197,8 @@ api.interceptors.request.use(
         }
         try {
             config.headers['x-timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            config.headers['x-device-id'] = getPersistentDeviceId();
+            config.headers['x-device-name'] = getFriendlyDeviceName();
         } catch (e) {}
         return config;
     },

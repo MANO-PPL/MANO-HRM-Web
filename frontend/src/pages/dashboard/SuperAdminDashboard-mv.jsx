@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { motion } from 'framer-motion';
-import { Users, Building, MessageSquare, Briefcase, FileText, ShieldAlert, Clock, ChevronRight, Activity, MapPin, RefreshCw } from 'lucide-react';
+import { Users, Building, MessageSquare, Briefcase, FileText, ShieldAlert, Clock, ChevronRight, Activity, MapPin, RefreshCw, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
@@ -237,8 +237,9 @@ const SuperAdminDashboardMobile = () => {
         {/* Quick Actions */}
         <div className="space-y-2">
           <h3 className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.2em] px-1">Quick Actions</h3>
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-4 gap-2">
             <QuickLinkCard onClick={() => navigate('/organizations')} icon={<Building size={16} />} title="New Org" />
+            <QuickLinkCard onClick={() => navigate('/super-admin/sessions')} icon={<KeyRound size={16} />} title="Sessions" />
             <QuickLinkCard onClick={() => navigate('/super-admin/logs')} icon={<FileText size={16} />} title="Logs" />
             <QuickLinkCard onClick={() => navigate('/super-admin/alerts')} icon={<ShieldAlert size={16} />} title="Security" />
           </div>

@@ -125,7 +125,7 @@ function deletionPlan(s) {
         ['attn_records', s.byUser()],
         ['comm_events_meetings', s.byUser()],
         ['comm_notifications', s.byUser()],
-        ['core_refresh_tokens', s.byUser()],
+        ['sessions', s.byUser()],
         ['core_user_fcm_tokens', s.byUser()],
         ['org_user_work_locations', s.byUser()],
 

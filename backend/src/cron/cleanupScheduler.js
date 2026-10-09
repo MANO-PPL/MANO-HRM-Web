@@ -6,32 +6,30 @@ import { permanentlyDeleteUser } from '../modules/users/userService.js';
 import * as MapsService from '../services/google_api_services/maps.js';
 import { safeJsonParse } from '../utils/dataUtils.js';
 import { deleteOrganization } from '../modules/organisations/orgDeletionService.js';
+import * as sessionService from '../modules/auth/sessionService.js';
 
 
 /**
- * Cleanup Old Refresh Tokens
- * Removes tokens expired or revoked for more than 7 days.
+ * Cleanup Old Refresh Tokens & Sessions
+ * Removes tokens/sessions expired or revoked for more than 7 days.
  */
 async function cleanupRefreshTokens() {
     try {
-        console.log('🧹 Starting refresh token cleanup...');
+        console.log('🧹 Starting session and refresh token cleanup...');
 
-        const gracePeriodDays = 7;
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - gracePeriodDays);
+        const { expiredCount, revokedCount } = await sessionService.cleanupOldSessions({ cutoffDays: 7 });
 
-        const expiredCount = await attendanceDB('core_refresh_tokens')
-            .where('expires_at', '<', cutoffDate)
-            .del();
+        // Also purge from legacy core_refresh_tokens if table exists
+        try {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - 7);
+            await attendanceDB('core_refresh_tokens').where('expires_at', '<', cutoffDate).del();
+            await attendanceDB('core_refresh_tokens').where('revoked', true).where('created_at', '<', cutoffDate).del();
+        } catch (_) {}
 
-        const revokedCount = await attendanceDB('core_refresh_tokens')
-            .where('revoked', true)
-            .where('created_at', '<', cutoffDate)
-            .del();
-
-        console.log(`✅ Cleanup complete: ${expiredCount} expired tokens, ${revokedCount} revoked tokens deleted.`);
+        console.log(`✅ Cleanup complete: ${expiredCount} expired sessions, ${revokedCount} revoked sessions deleted.`);
     } catch (error) {
-        console.error('❌ Error during refresh token cleanup:', error);
+        console.error('❌ Error during session cleanup:', error);
     }
 }
 
