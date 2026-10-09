@@ -15,6 +15,7 @@ import { Plus, ChevronDown, Calendar, CheckSquare, Video, Shield } from 'lucide-
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTour } from '../../context/TourContext';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const EMPLOYEE_PAGE_KEY = 'employee_daily_activity';
 const ADMIN_PAGE_KEY = 'admin_dar';
@@ -403,7 +404,7 @@ const DailyActivity = () => {
                             ) : (
                                 <div className="flex items-center gap-2">
                                     <span className="text-indigo-600 dark:text-indigo-400">●</span>
-                                    {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    {formatPlatformDate(selectedDate)}
                                 </div>
                             )}
                         </button>
@@ -542,7 +543,7 @@ const DailyActivity = () => {
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400"
                                         >
                                             <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-                                            <span className="text-xs font-bold uppercase tracking-tight">Editing {new Date(panelDate + 'T12:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</span>
+                                            <span className="text-xs font-bold uppercase tracking-tight">Editing {formatPlatformDate(panelDate)}</span>
                                         </motion.div>
                                     </div>
                                 )}

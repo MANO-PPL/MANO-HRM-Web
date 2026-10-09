@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const formatLastMessagePreview = (messageText) => {
     if (!messageText) return "";
@@ -850,14 +851,7 @@ const ChatPage = () => {
     const formatDatePretty = (dateStr) => {
         if (!dateStr) return '';
         try {
-            const date = new Date(dateStr);
-            if (isNaN(date.getTime())) return dateStr;
-            return date.toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
+            return formatPlatformDate(dateStr);
         } catch (e) {
             return dateStr;
         }

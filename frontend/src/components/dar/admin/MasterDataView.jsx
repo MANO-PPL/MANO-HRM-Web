@@ -10,6 +10,7 @@ import MiniCalendar from '../MiniCalendar'; // Ensure path is correct relative t
 import api from '../../../services/api'; // Ensure path is correct relative to new location
 import { toast } from 'react-toastify';
 import { getStatusStyle, ATTENDANCE_STATUS } from '../../../utils/attendanceStatus';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 function shiftDateYMD(dateStr, deltaDays) {
     const base = new Date(`${dateStr}T00:00:00`);
@@ -482,11 +483,9 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
     const formatDateDisplay = (user) => {
         if (timeMode === 'day') {
-            return new Date(user.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            return formatPlatformDate(user.date);
         } else {
-            const startDate = new Date(user.dateStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            const endDate = new Date(user.dateEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            return `${startDate} - ${endDate}`;
+            return `${formatPlatformDate(user.dateStart)} - ${formatPlatformDate(user.dateEnd)}`;
         }
     };
 
@@ -618,8 +617,8 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                         <Calendar size={16} className="text-indigo-500" />
                         <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">
                             {dateRange.start === dateRange.end
-                                ? new Date(dateRange.start).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-                                : `${new Date(dateRange.start).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} - ${new Date(dateRange.end).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                                ? formatPlatformDate(dateRange.start)
+                                : `${formatPlatformDate(dateRange.start)} - ${formatPlatformDate(dateRange.end)}`
                             }
                         </span>
                     </button>

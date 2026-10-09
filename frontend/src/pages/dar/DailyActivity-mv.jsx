@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -50,6 +51,8 @@ const getLocalDateString = (dateInput) => {
 
 const DailyActivityMobile = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
+    const isAdminOrHr = user?.user_type === 'admin' || user?.user_type === 'hr' || user?.isAdmin;
     const [selectedDate, setSelectedDate] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         const d = params.get('date');
@@ -192,7 +195,20 @@ const DailyActivityMobile = () => {
     const holidayName = holidays[selectedDate];
 
     return (
-        <MobileDashboardLayout title="Daily Activity">
+        <MobileDashboardLayout 
+            title="Daily Activity"
+            headerAction={
+                isAdminOrHr ? (
+                    <button
+                        onClick={() => navigate('/dar-admin')}
+                        className="p-1 text-slate-500 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+                        title="Team Activities Overview"
+                    >
+                        <Users size={18} />
+                    </button>
+                ) : null
+            }
+        >
             <div className="flex flex-col gap-6">
                 
                 {/* --- COMPACT HORIZONTAL DATE PICKER --- */}
