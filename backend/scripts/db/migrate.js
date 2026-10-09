@@ -24,6 +24,8 @@ const db = knex({
     },
 });
 
+console.log(process.env.DB_ADMIN_USER, process.env.DB_ADMIN_PASSWORD, process.env.DB_HOST, process.env.DB_PORT, process.env.ATTENDANCE_DB_NAME)
+
 const command = process.argv[2] || 'status';
 try {
     const target = `${db.client.config.connection.database} on ${db.client.config.connection.host}:${db.client.config.connection.port} as ${db.client.config.connection.user}`;

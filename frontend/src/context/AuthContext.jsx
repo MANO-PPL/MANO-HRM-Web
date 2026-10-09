@@ -132,6 +132,10 @@ export const AuthProvider = ({ children }) => {
     return () => { isMounted = false; };
   }, []);
 
+  // ==========================================
+  // AUTHENTICATION HANDLERS
+  // ==========================================
+
   const login = async (email, password, captchaToken, rememberMe = false) => {
     // Construct request body for v2 recaptcha only
     const loginData = {
@@ -141,10 +145,7 @@ export const AuthProvider = ({ children }) => {
       captchaToken, // Backend checks for this key for v2 verification
     };
 
-    // Clear cache on login
     clearApiCache();
-
-    // Axios throws on 4xx/5xx, so we just await the call
     const res = await api.post("/auth/login", loginData);
 
     if (res.data.accessToken) {
@@ -158,7 +159,7 @@ export const AuthProvider = ({ children }) => {
       await fetchUser();
     }
 
-    return res.data; // Return data for redirect logic in Login.jsx
+    return res.data;
   };
 
   const superAdminLogin = async (email, password) => {
@@ -219,6 +220,70 @@ export const AuthProvider = ({ children }) => {
       window.location.href = "/login";
     }
   };
+
+  // ==========================================
+  // SUPERADMIN AFK & SLIDING KEEP-ALIVE
+  // ==========================================
+
+  useEffect(() => {
+    if (!user || user.user_type !== 'super_admin') return;
+
+    const AFK_TIMEOUT_MS = 30 * 60 * 1000;         // 30 minutes idle timeout
+    const KEEP_ALIVE_INTERVAL_MS = 10 * 60 * 1000; // Extend session every 10 minutes while active
+    let lastActivityTime = Date.now();
+    let lastKeepAliveTime = Date.now();
+
+    const recordActivity = () => {
+      const now = Date.now();
+      lastActivityTime = now;
+
+      // Extend session if user is active and it's been more than 10 mins since last refresh
+      if (now - lastKeepAliveTime >= KEEP_ALIVE_INTERVAL_MS) {
+        lastKeepAliveTime = now;
+        api.post('/auth/refresh')
+          .then(res => {
+            if (res.data?.accessToken) {
+              setAccessToken(res.data.accessToken);
+            }
+          })
+          .catch(err => {
+            console.warn('Super Admin keep-alive token refresh failed:', err);
+          });
+      }
+    };
+
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    activityEvents.forEach(evt => window.addEventListener(evt, recordActivity, { passive: true }));
+
+    // Detect AFK when tab regains visibility (e.g. laptop wake or tab switch)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        const idleDuration = Date.now() - lastActivityTime;
+        if (idleDuration >= AFK_TIMEOUT_MS) {
+          console.warn('Super Admin session expired due to inactivity (AFK).');
+          logout();
+        } else {
+          recordActivity();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Periodic check every 15 seconds to catch AFK even if tab stays in foreground
+    const idleCheckInterval = setInterval(() => {
+      const idleDuration = Date.now() - lastActivityTime;
+      if (idleDuration >= AFK_TIMEOUT_MS) {
+        console.warn('Super Admin session expired due to inactivity (AFK).');
+        logout();
+      }
+    }, 15000);
+
+    return () => {
+      activityEvents.forEach(evt => window.removeEventListener(evt, recordActivity));
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(idleCheckInterval);
+    };
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, setUser, login, superAdminLogin, logout, authChecked, fetchUser, avatarTimestamp }}>

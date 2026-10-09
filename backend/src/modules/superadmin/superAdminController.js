@@ -135,3 +135,121 @@ export const getDebugLogs = catchAsync(async (req, res, next) => {
         }
     });
 });
+
+// --- Session & Token Management ---
+export const getSessions = catchAsync(async (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const {
+        page = 1,
+        limit = 20,
+        search,
+        status = 'all',
+        device_type = 'all',
+        browser = 'all',
+        os = 'all',
+        user_type = 'all',
+        org_id,
+        sortBy = 'created_at',
+        sortOrder = 'desc'
+    } = req.query;
+
+    const result = await superAdminService.getSessions({
+        page,
+        limit,
+        search,
+        status,
+        device_type,
+        browser,
+        os,
+        user_type,
+        org_id,
+        sortBy,
+        sortOrder
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: result.sessions,
+        pagination: result.pagination,
+        stats: result.stats,
+        organizations: result.organizations
+    });
+});
+
+export const getSessionStats = catchAsync(async (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const stats = await superAdminService.getSessionMetrics();
+    res.status(200).json({
+        status: 'success',
+        data: stats
+    });
+});
+
+export const revokeSession = catchAsync(async (req, res, next) => {
+    const { id } = req.params;
+    const result = await superAdminService.revokeSessionById(id);
+    res.status(200).json({
+        status: 'success',
+        message: result.message
+    });
+});
+
+export const bulkRevokeSessions = catchAsync(async (req, res, next) => {
+    const { ids } = req.body;
+    const result = await superAdminService.bulkRevokeSessions(ids);
+    res.status(200).json({
+        status: 'success',
+        count: result.count,
+        message: result.message
+    });
+});
+
+export const revokeAllUserSessions = catchAsync(async (req, res, next) => {
+    const { userId } = req.params;
+    const result = await superAdminService.revokeAllUserSessions(userId);
+    res.status(200).json({
+        status: 'success',
+        count: result.count,
+        message: result.message
+    });
+});
+
+export const cleanupExpiredSessions = catchAsync(async (req, res, next) => {
+    const result = await superAdminService.cleanupExpiredSessions();
+    res.status(200).json({
+        status: 'success',
+        count: result.count,
+        message: result.message
+    });
+});
+
+// --- FCM Device Push Tokens ---
+export const getDeviceTokens = catchAsync(async (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const { page = 1, limit = 20, search, device_type = 'all' } = req.query;
+    const result = await superAdminService.getDeviceTokens({ page, limit, search, device_type });
+    res.status(200).json({
+        status: 'success',
+        data: result.deviceTokens,
+        pagination: result.pagination
+    });
+});
+
+export const deleteDeviceToken = catchAsync(async (req, res, next) => {
+    const { id } = req.params;
+    const result = await superAdminService.deleteDeviceToken(id);
+    res.status(200).json({
+        status: 'success',
+        message: result.message
+    });
+});
+

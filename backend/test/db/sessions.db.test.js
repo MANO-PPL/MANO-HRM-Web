@@ -71,7 +71,7 @@ test('refreshed access tokens carry the session id', async () => {
     const phone = await newSession(ids.empB);
     const { accessToken } = await (await appRefresh(phone)).json();
     const { sid } = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString());
-    const row = await db('core_refresh_tokens').where({ token: TokenService.hashRefreshToken(phone) }).first();
+    const row = await (db('sessions').where({ token_hash: TokenService.hashRefreshToken(phone) }).first());
     assert.equal(sid, row.id);
 });
 

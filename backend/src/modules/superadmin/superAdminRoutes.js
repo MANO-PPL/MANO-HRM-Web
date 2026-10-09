@@ -38,4 +38,17 @@ router.get('/monitor/api-analytics', superAdminController.getAPIAnalytics);
 router.get('/monitor/debug-logs', superAdminController.getDebugLogs);
 router.post('/monitor/client-errors', superAdminController.postClientError);
 
+// Session & Token Management
+router.get('/sessions', superAdminController.getSessions);
+router.get('/sessions/stats', superAdminController.getSessionStats);
+router.post('/sessions/:id/revoke', superAdminController.revokeSession);
+router.post('/sessions/bulk-revoke', superAdminController.bulkRevokeSessions);
+router.post('/sessions/user/:userId/revoke-all', superAdminController.revokeAllUserSessions);
+router.post('/sessions/cleanup-expired', superAdminController.cleanupExpiredSessions);
+
+// FCM Device Push Tokens
+router.get('/device-tokens', superAdminController.getDeviceTokens);
+router.delete('/device-tokens/:id', superAdminController.deleteDeviceToken);
+
 export default router;
+

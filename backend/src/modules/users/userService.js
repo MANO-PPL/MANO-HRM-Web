@@ -542,7 +542,8 @@ export const permanentlyDeleteUser = async (userId) => {
             return false;
         }
 
-        await trx('core_refresh_tokens').where('user_id', userId).del();
+        try { await trx('sessions').where('user_id', userId).del(); } catch (_) { }
+        try { await trx('core_refresh_tokens').where('user_id', userId).del(); } catch (_) { }
         await trx('comm_notifications').where('user_id', userId).del();
         await trx('sys_activity_logs').where('user_id', userId).del();
         await trx('sys_error_logs').where('user_id', userId).del();

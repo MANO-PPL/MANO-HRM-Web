@@ -10,6 +10,7 @@ import ConfirmationModal from '../../components/modals/ConfirmationModal';
 import { AnimatePresence } from 'framer-motion';
 import { compressImage } from '../../utils/imageCompressor';
 import { getErrorMessage } from '../../utils/errorMessage';
+import ActiveDevicesManager from '../../components/ActiveDevicesManager';
 
 const Profile = () => {
     const navigate = useNavigate();
@@ -397,6 +398,9 @@ const Profile = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Active Devices & Session Management */}
+                <ActiveDevicesManager />
 
             </div>
 

@@ -8,6 +8,7 @@ import api from '../../services/api';
 import { toast } from 'react-toastify';
 import { compressImage } from '../../utils/imageCompressor';
 import { getErrorMessage } from '../../utils/errorMessage';
+import ActiveDevicesManager from '../../components/ActiveDevicesManager';
 
 const Profile = () => {
     const { user: authUser, fetchUser, setUser, logout } = useAuth();
@@ -339,6 +340,11 @@ const Profile = () => {
                             <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${!tourDismissed ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                         </button>
                     </div>
+                </div>
+
+                {/* Active Devices & Sessions */}
+                <div className="mt-2">
+                    <ActiveDevicesManager />
                 </div>
 
                 {/* Logout Button */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
-import { Users, Building, AlertCircle, MessageSquare, Briefcase, FileText, ShieldAlert, Clock, ChevronRight, Activity } from 'lucide-react';
+import { Users, Building, AlertCircle, MessageSquare, Briefcase, FileText, ShieldAlert, Clock, ChevronRight, Activity, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
@@ -203,8 +203,9 @@ const SuperAdminDashboard = () => {
         {/* Quick Actions */}
         <div>
           <h3 className="text-xs font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider mb-3">Quick Management Links</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <QuickLinkCard onClick={() => navigate('/organizations')} icon={<Building size={20} />} title="Organizations" desc="Onboard & manage tenants" />
+            <QuickLinkCard onClick={() => navigate('/super-admin/sessions')} icon={<KeyRound size={20} />} title="Session Management" desc="Track active sessions & tokens" />
             <QuickLinkCard onClick={() => navigate('/super-admin/logs')} icon={<FileText size={20} />} title="PM2 Logs Console" desc="Stream live process logs" />
             <QuickLinkCard onClick={() => navigate('/super-admin/alerts')} icon={<ShieldAlert size={20} />} title="Security Alerts" desc="Check system firewalls" />
             <QuickLinkCard onClick={() => navigate('/super-admin/feedback')} icon={<MessageSquare size={20} />} title="User Feedback" desc="Review tickets & bugs" />

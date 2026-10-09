@@ -2,6 +2,8 @@ import { attendanceDB } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 import { getFileUrl } from '../../services/s3/s3Service.js';
 import { getFilteredLogs } from './pm2Service.js';
+import { parseUserAgent } from '../../utils/deviceParser.js';
+import * as sessionService from '../auth/sessionService.js';
 
 export const getDashboardStats = async () => {
     const [
@@ -463,3 +465,120 @@ export const getDebugLogs = async ({ userId, orgId, platform, type = 'all', sear
         pages: Math.ceil(total / parsedLimit)
     };
 };
+
+// ==========================================
+// SESSION & TOKEN MANAGEMENT
+// ==========================================
+
+export const getSessions = async (options) => {
+    return await sessionService.listSessions({ ...options, isAdmin: true });
+};
+
+export const getSessionMetrics = async () => {
+    return await sessionService.getSessionMetrics();
+};
+
+export const revokeSessionById = async (id) => {
+    return await sessionService.revokeSession({ sessionId: Number(id), reason: 'superadmin_revoked' });
+};
+
+export const bulkRevokeSessions = async (ids = []) => {
+    return await sessionService.revokeSessions(ids.map(Number), { reason: 'superadmin_bulk_revoked' });
+};
+
+export const revokeAllUserSessions = async (userId) => {
+    const user = await attendanceDB('core_users').where('user_id', userId).first();
+    if (!user) throw new AppError('User not found', 404);
+
+    const result = await sessionService.revokeAllSessions(Number(userId), { reason: 'superadmin_user_revoke_all' });
+    return { success: true, count: result.count, message: `All sessions revoked for user ${user.user_name || userId}` };
+};
+
+export const cleanupExpiredSessions = async () => {
+    return await sessionService.cleanupExpiredSessions();
+};
+
+// FCM Push Device Tokens
+export const getDeviceTokens = async ({ page = 1, limit = 20, search = '', device_type = 'all' }) => {
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    let query = attendanceDB('core_user_fcm_tokens as f')
+        .leftJoin('core_users as u', 'f.user_id', 'u.user_id')
+        .leftJoin('core_organizations as o', 'u.org_id', 'o.org_id')
+        .select(
+            'f.id',
+            'f.user_id',
+            'f.token',
+            'f.device_type',
+            'f.created_at',
+            'f.updated_at',
+            'u.user_name',
+            'u.email',
+            'u.user_code',
+            'u.user_type',
+            'o.org_name'
+        )
+        .orderBy('f.updated_at', 'desc');
+
+    let countQuery = attendanceDB('core_user_fcm_tokens as f')
+        .leftJoin('core_users as u', 'f.user_id', 'u.user_id')
+        .leftJoin('core_organizations as o', 'u.org_id', 'o.org_id');
+
+    if (device_type && device_type !== 'all') {
+        query = query.where('f.device_type', device_type);
+        countQuery = countQuery.where('f.device_type', device_type);
+    }
+
+    if (search) {
+        const searchQuery = `%${search}%`;
+        query = query.andWhere(function() {
+            this.where('u.user_name', 'like', searchQuery)
+                .orWhere('u.email', 'like', searchQuery)
+                .orWhere('u.user_code', 'like', searchQuery)
+                .orWhere('o.org_name', 'like', searchQuery)
+                .orWhere('f.token', 'like', searchQuery)
+                .orWhere('f.device_type', 'like', searchQuery);
+        });
+        countQuery = countQuery.andWhere(function() {
+            this.where('u.user_name', 'like', searchQuery)
+                .orWhere('u.email', 'like', searchQuery)
+                .orWhere('u.user_code', 'like', searchQuery)
+                .orWhere('o.org_name', 'like', searchQuery)
+                .orWhere('f.token', 'like', searchQuery)
+                .orWhere('f.device_type', 'like', searchQuery);
+        });
+    }
+
+    const [tokens, totalRes] = await Promise.all([
+        query.limit(parsedLimit).offset(offset),
+        countQuery.count('f.id as count').first()
+    ]);
+
+    const total = totalRes ? parseInt(totalRes.count) : 0;
+
+    return {
+        deviceTokens: tokens.map(t => ({
+            ...t,
+            token_preview: t.token && t.token.length > 20 
+                ? `${t.token.substring(0, 10)}...${t.token.substring(t.token.length - 8)}`
+                : t.token
+        })),
+        pagination: {
+            page: parsedPage,
+            limit: parsedLimit,
+            total,
+            totalPages: Math.ceil(total / parsedLimit)
+        }
+    };
+};
+
+export const deleteDeviceToken = async (id) => {
+    const existing = await attendanceDB('core_user_fcm_tokens').where('id', id).first();
+    if (!existing) throw new AppError('Device token not found', 404);
+
+    await attendanceDB('core_user_fcm_tokens').where('id', id).del();
+    return { success: true, message: 'Device token removed successfully' };
+};
+
