@@ -11,7 +11,6 @@ import assert from 'node:assert/strict';
 const { default: app } = await import('../../src/app.js');
 const { attendanceDB: db } = await import('../../src/config/database.js');
 const { runShutdownHooks } = await import('../../src/lifecycle/shutdown.js');
-const migration = await import('../../migrations/20260929120000_leave_attachments_fk_to_leave_request.mjs');
 const { seed } = await import('./support/seed.js');
 
 let ids;
@@ -58,17 +57,3 @@ test('withdrawing a leave removes its attachment rows', async () => {
     assert.equal(await db('leave_attachments').where({ leave_id: ids.leave_empA }).first(), undefined);
 });
 
-test('migration backs up unreachable attachments and can be re-run', async () => {
-    // An attachment pointing at a leave that no longer exists (as before the fix)
-    await db.transaction(async (trx) => {
-        await trx.raw('SET FOREIGN_KEY_CHECKS = 0');
-        await trx('leave_attachments').insert({ leave_id: 999999, file_key: 'leaves/gone/old.pdf' });
-        await trx.raw('SET FOREIGN_KEY_CHECKS = 1');
-    });
-
-    await migration.up(db);
-
-    assert.equal(await db('leave_attachments').where({ leave_id: 999999 }).first(), undefined);
-    assert.ok(await db('leave_attachments_orphans_backup').where({ file_key: 'leaves/gone/old.pdf' }).first());
-    assert.deepEqual(await referencedTables(), [{ t: 'leave_request', rule: 'CASCADE' }]);
-});

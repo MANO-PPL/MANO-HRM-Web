@@ -31,7 +31,7 @@ async function seedExtra(org) {
     await db('attn_daily_summary_v2').insert({ user_id: emp, date: today, status: 'PRESENT' });
     await db('attn_daily_activities').insert({ user_id: emp, activity_date: today, start_time: '09:00', end_time: '10:00', title: 'Work' });
     await db('comm_notifications').insert({ user_id: emp, title: 'Hello' });
-    await db('core_refresh_tokens').insert({ user_id: emp, token: `token-${org}`, expires_at: `${today} 23:59:59` });
+    await db('sessions').insert({ user_id: emp, token_hash: `token_hash_${org}`, expires_at: `${today} 23:59:59` });
     await db('core_user_fcm_tokens').insert({ user_id: emp, token: `fcm-${org}` });
     await db('sys_api_logs').insert({ org_id: orgId, user_id: emp, request_path: '/x', method: 'GET', status_code: 200, duration_ms: 1, is_success: 1 });
     await db('sys_activity_logs').insert({ org_id: orgId, user_id: emp, event_type: 'TEST' });
