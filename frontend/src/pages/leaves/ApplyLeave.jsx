@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { leaveService } from '../../services/leaveService';
 import { holidayService, parseLocalDate } from '../../services/holidayService';
+import { formatPlatformDate } from '../../utils/dateUtils';
 import { toast } from 'react-toastify';
 import {
     Calendar as CalendarIcon,
@@ -484,7 +485,7 @@ const ApplyLeave = () => {
                                                 <div key={leave.leave_id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                                                     <div>
                                                         <h4 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">{leave.leave_type}</h4>
-                                                        <p className="text-xs text-slate-500">{new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}</p>
+                                                        <p className="text-xs text-slate-500">{formatPlatformDate(leave.start_date)} - {formatPlatformDate(leave.end_date)}</p>
                                                     </div>
                                                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold ${statusStyle.bg} ${statusStyle.color}`}>
                                                         <StatusIcon size={10} />

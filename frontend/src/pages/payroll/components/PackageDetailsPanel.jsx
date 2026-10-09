@@ -1,5 +1,6 @@
 import React from 'react';
 import { Layers, Calendar, Clock, Edit2, Trash2 } from 'lucide-react';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const PackageDetailsPanel = ({
     selectedPackage,
@@ -23,7 +24,7 @@ const PackageDetailsPanel = ({
                         {selectedPackage.package_name}
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                        Created on {new Date(selectedPackage.created_at).toLocaleDateString()}
+                        Created on {selectedPackage.created_at ? formatPlatformDate(selectedPackage.created_at) : 'N/A'}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">

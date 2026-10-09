@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { DollarSign, ToggleLeft, ToggleRight, Calendar, Plus, Save, Clock, History } from 'lucide-react';
 import payrollService from '../../services/payrollService';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const CompensationTab = ({ employeeId }) => {
     const [loading, setLoading] = useState(true);
@@ -125,7 +126,7 @@ const CompensationTab = ({ employeeId }) => {
                             <div>
                                 <span className="block text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Effective From</span>
                                 <span className="text-xs font-semibold text-slate-700 dark:text-github-dark-text mt-0.5 block">
-                                    {new Date(activeSalary.effective_from).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                    {formatPlatformDate(activeSalary.effective_from)}
                                 </span>
                             </div>
                         </div>
@@ -266,7 +267,7 @@ const CompensationTab = ({ employeeId }) => {
                                             {history.overtime_enabled ? `₹${history.overtime_rate}/hr` : 'No'}
                                         </td>
                                         <td className="px-4 py-3 text-[10px] font-mono text-slate-400">
-                                            {history.effective_from} to {history.effective_to || 'Present'}
+                                            {formatPlatformDate(history.effective_from)} to {history.effective_to ? formatPlatformDate(history.effective_to) : 'Present'}
                                         </td>
                                     </tr>
                                 ))

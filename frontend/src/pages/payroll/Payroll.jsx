@@ -29,6 +29,7 @@ import { toast } from 'react-toastify';
 import { motion } from 'framer-motion';
 import payrollService from '../../services/payrollService';
 import { adminService } from '../../services/adminService';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 // Modals
 import PayrollSettingsModal from './components/PayrollSettingsModal';
@@ -588,7 +589,7 @@ const Payroll = () => {
                                     {selectedRun.status === 'paid' && (
                                         <span className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
                                             <CheckCircle size={14} />
-                                            Disbursed on {selectedRun.paid_at ? new Date(selectedRun.paid_at).toLocaleDateString() : 'Paid'}
+                                            Disbursed on {selectedRun.paid_at ? formatPlatformDate(selectedRun.paid_at) : 'Paid'}
                                         </span>
                                     )}
                                 </div>

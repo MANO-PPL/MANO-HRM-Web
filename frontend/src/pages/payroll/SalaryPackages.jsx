@@ -3,6 +3,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import { Layers, Plus } from 'lucide-react';
 import payrollService from '../../services/payrollService';
 import { toast } from 'react-toastify';
+import { formatPlatformDate } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
 import PackageDirectory from './components/PackageDirectory';
 import PackageDetailsPanel from './components/PackageDetailsPanel';
@@ -19,27 +20,12 @@ const SalaryPackages = ({ embedded = false }) => {
 
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
-        const parts = dateStr.split('T')[0].split('-');
-        if (parts.length === 3) {
-            const [year, month, day] = parts;
-            return `${Number(month)}/${Number(day)}/${year}`;
-        }
-        return new Date(dateStr).toLocaleDateString();
+        return formatPlatformDate(dateStr);
     };
 
     const formatVerboseDate = (dateStr) => {
         if (!dateStr) return '';
-        const parts = dateStr.split('T')[0].split('-');
-        if (parts.length === 3) {
-            const [year, month, day] = parts;
-            const months = [
-                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-            ];
-            const monthName = months[Number(month) - 1];
-            return `${monthName} ${Number(day)}, ${year}`;
-        }
-        return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        return formatPlatformDate(dateStr);
     };
 
     // ── PACKAGE STATE ─────────────────────────────────────────────────────────
