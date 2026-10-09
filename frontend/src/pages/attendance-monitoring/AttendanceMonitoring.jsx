@@ -48,6 +48,7 @@ import { attendanceService, attendanceCacheData } from '../../services/attendanc
 import DatePicker from '../../components/DatePicker';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
+import { formatPlatformDate } from '../../utils/dateUtils';
 import { useTour } from '../../context/TourContext';
 import axios from 'axios';
 import api from '../../services/api';
@@ -161,7 +162,7 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
                 rawOut: outTime,
                 in: inStr,
                 out: outStr,
-                date: inTime ? inTime.toLocaleDateString() : '-',
+                date: inTime ? formatPlatformDate(inTime) : '-',
                 isActive,
                 inLocation: inLoc,
                 outLocation: outLoc,
@@ -1037,10 +1038,7 @@ const AttendanceMonitoring = () => {
     const formatCorrectionDate = (dateStr) => {
         if (!dateStr) return 'Unknown Date';
         try {
-            const cleanStr = (dateStr.length === 10 && !dateStr.includes('T')) ? dateStr + 'T00:00:00' : dateStr;
-            const d = new Date(cleanStr);
-            if (isNaN(d.getTime())) return dateStr;
-            return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            return formatPlatformDate(dateStr);
         } catch (e) {
             return dateStr;
         }

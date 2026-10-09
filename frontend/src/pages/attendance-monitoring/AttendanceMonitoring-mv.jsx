@@ -7,13 +7,17 @@ import {
     ChevronDown, FileText, CheckCircle, XCircle, AlertCircle, X, LogIn,
     LogOut, History, PieChart as PieChartIcon, BarChart as BarChartIcon,
     RefreshCcw, MoreVertical, LayoutGrid, ArrowRight, Eye, Info,
-    ChevronRight, ChevronLeft, Map, Camera, Users, Check, Briefcase, TrendingUp
+    ChevronRight, ChevronLeft, Map, Camera, Users, Check, Briefcase, TrendingUp, Sparkles,
+    Plus, Paperclip, Coffee
 } from 'lucide-react';
+import api from '../../services/api';
+import AiSummaryModal from './components/AiSummaryModal';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import DatePicker from '../../components/DatePicker';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
+import { formatPlatformDate } from '../../utils/dateUtils';
 import {
     PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, AreaChart, Area
@@ -130,7 +134,7 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
                 rawOut: outTime,
                 in: inStr,
                 out: outStr,
-                date: inTime ? inTime.toLocaleDateString() : 'N/A',
+                date: inTime ? formatPlatformDate(inTime) : 'N/A',
                 isActive,
                 inLocation: inLoc,
                 outLocation: outLoc,
@@ -279,6 +283,45 @@ const MobileAttendanceMonitoring = () => {
 
     const [orgTimezone, setOrgTimezone] = useState(() => cachedResponse?.timezone || 'UTC');
 
+    const formatHeaderDate = (dateStr) => {
+        if (!dateStr) return '';
+        try {
+            const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
+            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+        } catch (e) {
+            return dateStr;
+        }
+    };
+
+    const calculateProposedHours = (req) => {
+        try {
+            let sessions = [];
+            if (req.sessions && Array.isArray(req.sessions)) {
+                sessions = req.sessions;
+            } else if (req.correction_data) {
+                const data = typeof req.correction_data === 'string' ? JSON.parse(req.correction_data) : req.correction_data;
+                if (data?.sessions && Array.isArray(data.sessions)) sessions = data.sessions;
+                else if (data?.time_in && data?.time_out) sessions = [data];
+            } else if (req.time_in && req.time_out) {
+                sessions = [{ time_in: req.time_in, time_out: req.time_out }];
+            }
+
+            let totalMin = 0;
+            sessions.forEach(s => {
+                if (s.time_in && s.time_out) {
+                    const inParts = s.time_in.split(':').map(Number);
+                    const outParts = s.time_out.split(':').map(Number);
+                    const inMin = inParts[0] * 60 + inParts[1];
+                    const outMin = outParts[0] * 60 + outParts[1];
+                    if (outMin > inMin) totalMin += (outMin - inMin);
+                }
+            });
+            return totalMin > 0 ? (totalMin / 60).toFixed(1) : null;
+        } catch (e) {
+            return null;
+        }
+    };
+
     const getRequestTypeStyle = (type) => {
         const typeStr = String(type).toLowerCase().replace(/_/g, ' ');
         if (typeStr.includes('overtime')) {
@@ -313,6 +356,12 @@ const MobileAttendanceMonitoring = () => {
     const [lastSynced, setLastSynced] = useState(new Date());
     const [activeTheme, setActiveTheme] = useState('voyager');
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+
+    // AI Summary State
+    const [isAiSummaryOpen, setIsAiSummaryOpen] = useState(false);
+    const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+    const [aiSummaryData, setAiSummaryData] = useState(null);
+    const [aiSummaryError, setAiSummaryError] = useState(null);
 
     // Data State
     const [attendanceData, setAttendanceData] = useState(() => {
@@ -350,6 +399,10 @@ const MobileAttendanceMonitoring = () => {
     const [isDesgDropdownOpen, setIsDesgDropdownOpen] = useState(false);
     const [isShiftDropdownOpen, setIsShiftDropdownOpen] = useState(false);
 
+    // Requests Tab Filters
+    const [requestSearchTerm, setRequestSearchTerm] = useState('');
+    const [requestFilterStatus, setRequestFilterStatus] = useState('All');
+
     // Selection/Popup State
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [selectedRequest, setSelectedRequest] = useState(null);
@@ -358,6 +411,107 @@ const MobileAttendanceMonitoring = () => {
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
     const [shifts, setShifts] = useState([]);
+
+    const generateAiSummary = async () => {
+        if (!attendanceData || attendanceData.length === 0) {
+            toast.error("No attendance data available for the selected date to analyze.");
+            return;
+        }
+
+        setIsAiSummaryOpen(true);
+        setAiSummaryLoading(true);
+        setAiSummaryError(null);
+        try {
+            let presentCount = 0;
+            let lateCount = 0;
+            const deptStats = {};
+
+            attendanceData.forEach(emp => {
+                const statusLower = emp.status ? emp.status.toLowerCase() : '';
+                const isPresent = statusLower.includes('present') || statusLower.includes('late') || statusLower.includes('active') || statusLower.includes('overtime');
+                const isLate = statusLower.includes('late');
+
+                if (isPresent) presentCount++;
+                if (isLate) lateCount++;
+
+                const dept = emp.department || 'Unassigned';
+                if (!deptStats[dept]) deptStats[dept] = { present: 0, absent: 0, late: 0 };
+
+                if (isPresent) deptStats[dept].present++;
+                if (isLate) deptStats[dept].late++;
+                if (statusLower.includes('absent')) deptStats[dept].absent++;
+            });
+
+            const total = attendanceData.length || 1;
+            const analytics = {
+                present_rate: Math.round((presentCount / total) * 100),
+                late_rate: Math.round((lateCount / total) * 100),
+                avg_work_hours: 8.0,
+                department_breakdown: Object.keys(deptStats).map(dept => ({
+                    department: dept,
+                    present: deptStats[dept].present,
+                    absent: deptStats[dept].absent,
+                    late: deptStats[dept].late
+                })),
+                timeline_peaks: ["09:00", "17:00"]
+            };
+
+            const employees = attendanceData.map(emp => {
+                const firstSession = emp.sessions && emp.sessions.length > 0 ? emp.sessions[0] : null;
+                const lastSession = emp.sessions && emp.sessions.length > 0 ? emp.sessions[emp.sessions.length - 1] : null;
+
+                let status = 'absent';
+                const statusLower = emp.status ? emp.status.toLowerCase() : '';
+                if (statusLower.includes('active') || statusLower.includes('present') || statusLower.includes('overtime')) {
+                    status = 'present';
+                }
+                if (statusLower.includes('late')) {
+                    status = 'late';
+                }
+                if (statusLower.includes('leave') || statusLower.includes('week off') || statusLower.includes('holiday')) {
+                    status = 'on_leave';
+                }
+                if (statusLower.includes('absent')) {
+                    status = 'absent';
+                }
+
+                return {
+                    name: emp.name || 'Unknown',
+                    department: emp.department || 'Unassigned',
+                    status: status,
+                    check_in: firstSession && firstSession.in !== '-' ? firstSession.in : null,
+                    check_out: lastSession && lastSession.out !== '-' ? lastSession.out : null
+                };
+            });
+
+            const payload = {
+                date: selectedDate,
+                total_employees: attendanceData.length,
+                employees: employees,
+                analytics: analytics
+            };
+
+            const res = await api.post('/attendance/ai-summary', payload);
+            setAiSummaryData(res.data);
+        } catch (err) {
+            console.error("AI Summary Error:", err);
+            let errorMessage = "Failed to generate AI summary. Please try again.";
+            if (err.response?.data?.message) {
+                errorMessage = err.response.data.message;
+            } else if (typeof err.response?.data?.error === 'string') {
+                errorMessage = err.response.data.error;
+            } else if (err.response?.data?.error?.message) {
+                errorMessage = err.response.data.error.message;
+            }
+            setAiSummaryError(errorMessage);
+        } finally {
+            setAiSummaryLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        setAiSummaryData(null);
+    }, [selectedDate]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -671,667 +825,558 @@ const MobileAttendanceMonitoring = () => {
 
     // --- FILTERED DATA ---
     const filteredEmployees = attendanceData.filter(e => {
-        const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesDept = selectedDept === 'All' || (e.department && String(e.department) === String(selectedDept));
+        const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (e.role && e.role.toLowerCase().includes(searchTerm.toLowerCase()));
+        const matchesDept = selectedDept === 'All' || selectedDept === 'All Departments' || (e.department && String(e.department) === String(selectedDept));
         const matchesDesg = selectedDesg === 'All' || (e.role && String(e.role) === String(selectedDesg));
-        const matchesShift = selectedShift === 'All' || (selectedShift === 'open_shift' ? !e.shift_id : String(e.shift_id) === String(selectedShift));
+        const matchesShift = selectedShift === 'All' || selectedShift === 'All Shifts' || (selectedShift === 'open_shift' ? !e.shift_id : String(e.shift_id) === String(selectedShift));
 
-        
         let matchesStatus = true;
-        if (statusFilter === 'present') {
+        if (statusFilter === 'present' || statusFilter === 'PRESENT') {
             matchesStatus = e.status !== 'Absent' && e.status !== 'Week Off' && e.status !== 'Holiday' && e.status !== 'Leave' && e.status !== 'Half Day';
-        } else if (statusFilter === 'late') {
+        } else if (statusFilter === 'late' || statusFilter === 'LATE') {
             matchesStatus = e.allStatuses ? e.allStatuses.includes('Late') : (e.status.includes('Late') || e.isLate);
         } else if (statusFilter === 'overtime') {
             matchesStatus = e.allStatuses ? e.allStatuses.includes('Overtime') : (e.status.includes('Overtime') || e.isOvertime);
         } else if (statusFilter === 'halfDay') {
             matchesStatus = e.status === 'Half Day';
-        } else if (statusFilter === 'absent') {
+        } else if (statusFilter === 'absent' || statusFilter === 'ABSENT') {
             matchesStatus = e.status === 'Absent';
-        } else if (statusFilter === 'active') {
+        } else if (statusFilter === 'active' || statusFilter === 'ACTIVE') {
             matchesStatus = e.allStatuses ? e.allStatuses.includes('Active') : e.status.includes('Active');
+        } else if (statusFilter === 'on_leave' || statusFilter === 'ON_LEAVE') {
+            matchesStatus = ['Leave', 'Week Off', 'Holiday'].includes(e.status);
         }
-        
+
         return matchesSearch && matchesDept && matchesDesg && matchesShift && matchesStatus;
     });
 
-    const activeEmployees = filteredEmployees.filter(e => e.status !== 'Absent' && e.status !== 'Week Off' && e.status !== 'Holiday' && e.status !== 'Leave');
-    const absentEmployees = filteredEmployees.filter(e => ['Absent', 'Week Off', 'Holiday', 'Leave'].includes(e.status));
+    const presentEmployees = filteredEmployees.filter(e => e.status !== 'Absent');
+    const absentEmployees = filteredEmployees.filter(e => e.status === 'Absent');
+    const onLeaveCount = attendanceData.filter(e => ['Leave', 'Week Off', 'Holiday'].includes(e.status)).length;
+
+    // Filtered requests for the Requests Tab
+    const filteredRequests = useMemo(() => {
+        return correctionRequests.filter(req => {
+            const status = (req.status || 'PENDING').toUpperCase();
+            const matchesStatus = 
+                requestFilterStatus === 'All' ? true :
+                requestFilterStatus === 'Pending' ? status === 'PENDING' :
+                requestFilterStatus === 'Approved' ? status === 'APPROVED' :
+                requestFilterStatus === 'Rejected' ? status === 'REJECTED' : true;
+            
+            const q = requestSearchTerm.trim().toLowerCase();
+            const matchesSearch = !q ? true :
+                (req.user_name || '').toLowerCase().includes(q) ||
+                (req.user_id || '').toString().toLowerCase().includes(q) ||
+                (req.reason || '').toLowerCase().includes(q) ||
+                (req.correction_type || '').toLowerCase().includes(q) ||
+                (String(req.acr_id || req.id || '')).includes(q);
+
+            return matchesStatus && matchesSearch;
+        });
+    }, [correctionRequests, requestFilterStatus, requestSearchTerm]);
+
+    const requestCounts = useMemo(() => {
+        return {
+            all: correctionRequests.length,
+            pending: correctionRequests.filter(r => (r.status || '').toUpperCase() === 'PENDING').length,
+            approved: correctionRequests.filter(r => (r.status || '').toUpperCase() === 'APPROVED').length,
+            rejected: correctionRequests.filter(r => (r.status || '').toUpperCase() === 'REJECTED').length,
+        };
+    }, [correctionRequests]);
 
     return (
         <MobileDashboardLayout title="Live Attendance">
             <div className="min-h-screen bg-slate-50 dark:bg-github-dark-bg transition-colors duration-300 pb-24">
 
-                {/* --- STANDARDIZED PILL TAB BAR --- */}
-                <div className="sticky top-0 z-20 bg-white dark:bg-black px-4 py-3 border-b border-slate-100 dark:border-slate-800 transition-all duration-300">
-                    <div className="bg-slate-200/50 dark:bg-github-dark-border/50 p-1.5 flex rounded-2xl backdrop-blur-md mb-4">
-                        {MAIN_TABS.map((tab) => {
-                            const isActive = activeTab === tab;
-                            const label = tab === 'dashboard' ? 'Live Dashboard' : 'Correction Requests';
-                            const Icon = tab === 'dashboard' ? Activity : FileText;
+                {/* --- TOP TABS (Matching Flutter _buildTabs) --- */}
+                <div className="sticky top-0 z-20 bg-white/95 dark:bg-github-dark-bg/95 backdrop-blur-md px-3 pt-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                    <div className="bg-slate-100 dark:bg-[#161B22] p-1 flex rounded-xl border border-slate-200/70 dark:border-github-dark-border shadow-sm max-w-lg mx-auto">
+                        <button
+                            onClick={() => handleTabChange('dashboard')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                activeTab === 'dashboard'
+                                    ? 'bg-white dark:bg-[#2D3139] text-indigo-600 dark:text-white shadow-sm'
+                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                            }`}
+                        >
+                            <LayoutGrid size={14} className={activeTab === 'dashboard' ? 'text-indigo-600 dark:text-white' : 'text-slate-400'} />
+                            <span>Live Dashboard</span>
+                        </button>
 
-                            return (
-                                <button
-                                    key={tab}
-                                    onClick={() => handleTabChange(tab)}
-                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[9.5px] font-black uppercase tracking-wider transition-all duration-300 relative ${isActive
-                                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 transform scale-[1.02] shadow-sm'
-                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
-                                        }`}
-                                >
-                                    <Icon size={12} className={`${isActive ? 'text-indigo-500' : 'text-slate-400'} -mt-[1px]`} />
-                                    <span className="truncate leading-none">{label}</span>
-                                    {tab === 'requests' && requestCount > 0 && !isActive && (
-                                        <span className={`ml-1.5 ${requestCount > 9 ? 'min-w-[20px] h-5 px-1.5 rounded-full' : 'w-5 h-5 rounded-full aspect-square'} bg-red-600 text-white text-[11px] font-bold inline-flex items-center justify-center leading-none`}>
-                                            {requestCount}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
+                        <button
+                            onClick={() => handleTabChange('requests')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                activeTab === 'requests'
+                                    ? 'bg-white dark:bg-[#2D3139] text-indigo-600 dark:text-white shadow-sm'
+                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                            }`}
+                        >
+                            <FileText size={14} className={activeTab === 'requests' ? 'text-indigo-600 dark:text-white' : 'text-slate-400'} />
+                            <span>Correction Requests</span>
+                            {requestCount > 0 && (
+                                <span className="ml-1 px-1.5 py-0.2 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold inline-flex items-center justify-center leading-none">
+                                    {requestCount}
+                                </span>
+                            )}
+                        </button>
                     </div>
+                </div>
 
-                    {/* Sub-Navigation Bar (Matching Screenshot Style) */}
-                    {activeTab === 'dashboard' && (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-4 px-1 overflow-x-auto no-scrollbar border-b border-slate-50 dark:border-white/5">
-                                {SUB_TABS.map((sub) => {
-                                    const isActive = activeSubTab === sub.id;
+                {/* --- TAB CONTENT --- */}
+                {activeTab === 'dashboard' ? (
+                    <div className="max-w-lg mx-auto space-y-3 pb-6">
+                        {/* 1. Date Selector + Action Buttons (Matching Flutter _buildDateSelector) */}
+                        <div className="flex items-center justify-between gap-2 px-3 pt-3">
+                            <div className="relative flex items-center gap-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 px-3 py-1.5 rounded-xl shadow-sm">
+                                <Calendar size={13} className="text-indigo-600 dark:text-white shrink-0" />
+                                <DatePicker
+                                    value={selectedDate}
+                                    onChange={setSelectedDate}
+                                    maxDate={new Date().toISOString().split('T')[0]}
+                                    customDisplay={
+                                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 cursor-pointer">
+                                            {formatHeaderDate(selectedDate)}
+                                        </span>
+                                    }
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={generateAiSummary}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#6366F1] to-[#8B5CF6] text-white text-xs font-semibold shadow-md shadow-indigo-500/25 active:scale-95 transition-all"
+                                >
+                                    <Sparkles size={13} className="text-white" />
+                                    <span>AI Insights</span>
+                                </button>
+
+                                <button
+                                    onClick={() => fetchData(false, true)}
+                                    className="p-2 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-white/80 hover:text-indigo-600 shadow-sm active:scale-95 transition-all"
+                                    title="Refresh"
+                                >
+                                    <RefreshCcw size={15} className={loading ? 'animate-spin text-indigo-500' : ''} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 2. KPIs (2x2 Grid matching Flutter _buildKPIGrid) */}
+                        <div className="grid grid-cols-2 gap-2.5 px-3">
+                            <StatCard
+                                title="Total Present"
+                                value={stats.present}
+                                total={`/ ${stats.total}`}
+                                contextText="For Selected Date"
+                                icon={Users}
+                                baseColor="#5B60F6"
+                                isSelected={statusFilter === 'present'}
+                                onClick={() => setStatusFilter(statusFilter === 'present' ? 'All' : 'present')}
+                            />
+                            <StatCard
+                                title="Late"
+                                value={stats.late}
+                                contextText="Late Check-ins"
+                                icon={Clock}
+                                baseColor="#F59E0B"
+                                isSelected={statusFilter === 'late'}
+                                onClick={() => setStatusFilter(statusFilter === 'late' ? 'All' : 'late')}
+                            />
+                            <StatCard
+                                title="Absent"
+                                value={stats.absent}
+                                contextText="Not checked in"
+                                icon={UserX}
+                                baseColor="#EF4444"
+                                isSelected={statusFilter === 'absent'}
+                                onClick={() => setStatusFilter(statusFilter === 'absent' ? 'All' : 'absent')}
+                            />
+                            <StatCard
+                                title="Active Now"
+                                value={stats.active}
+                                contextText="Currently Clocked In"
+                                icon={Coffee}
+                                baseColor="#10B981"
+                                isSelected={statusFilter === 'active'}
+                                onClick={() => setStatusFilter(statusFilter === 'active' ? 'All' : 'active')}
+                            />
+                        </div>
+
+                        {/* 3. Sub-Tabs Switcher (Overview, Analytics, Timeline, Map View matching Flutter) */}
+                        <div className="px-3 pt-1">
+                            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                                {SUB_TABS.map((tab) => {
+                                    const isSelected = activeSubTab === tab.id;
+                                    const Icon = tab.icon;
                                     return (
                                         <button
-                                            key={sub.id}
-                                            onClick={() => setActiveSubTab(sub.id)}
-                                            className={`flex items-center gap-1.5 py-3 relative transition-all duration-300 whitespace-nowrap ${isActive
-                                                ? 'text-indigo-600 dark:text-indigo-400'
-                                                : 'text-slate-400 dark:text-github-dark-muted'
-                                                }`}
+                                            key={tab.id}
+                                            onClick={() => setActiveSubTab(tab.id)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                                                isSelected
+                                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                                                    : 'bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                            }`}
                                         >
-                                            <sub.icon size={13} className={`${isActive ? 'text-indigo-500' : 'text-slate-400'} -mt-[0.5px]`} />
-                                            <span className={`text-[9.5px] font-black uppercase tracking-normal leading-none ${isActive ? 'opacity-100' : 'opacity-70'}`}>
-                                                {sub.label}
-                                            </span>
-                                            {isActive && (
-                                                <motion.div
-                                                    layoutId="subTabUnderline"
-                                                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full"
-                                                />
-                                            )}
+                                            <Icon size={13} className={isSelected ? 'text-white' : 'text-slate-400'} />
+                                            <span>{tab.label}</span>
                                         </button>
                                     );
                                 })}
                             </div>
+                        </div>
 
-                            {/* Date Navigation Bar */}
-                            <div className="flex items-center gap-2">
-                                <div className="flex-1 flex items-center justify-between gap-1 p-1.5 bg-white dark:bg-github-dark-subtle/20 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm">
-                                    <button
-                                        onClick={handlePrevDay}
-                                        className="p-2.5 text-slate-400 hover:text-indigo-500 active:scale-90 transition-all rounded-xl hover:bg-slate-50 dark:hover:bg-white/5"
-                                    >
-                                        <ChevronLeft size={18} />
-                                    </button>
-
-                                    <div className="flex-1 min-w-0 relative">
-                                        <DatePicker
-                                            value={selectedDate}
-                                            onChange={setSelectedDate}
-                                            maxDate={new Date().toISOString().split('T')[0]}
+                        {/* 4. Sub-Tab Content */}
+                        {activeSubTab === 'overview' && (
+                            <div className="space-y-3">
+                                {/* Search Bar (Matching Flutter) */}
+                                <div className="px-3">
+                                    <div className="relative flex items-center h-9 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-2.5 shadow-sm">
+                                        <Search size={15} className="text-slate-400 shrink-0 mr-2" />
+                                        <input
+                                            type="text"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            placeholder="Search employee..."
+                                            className="w-full bg-transparent text-xs text-slate-800 dark:text-white placeholder:text-slate-400 outline-none"
                                         />
-                                        {isToday && (
-                                            <div className="absolute -top-1 -right-1">
-                                                <span className="flex h-2 w-2">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                                                </span>
-                                            </div>
+                                        {searchTerm && (
+                                            <button onClick={() => setSearchTerm('')} className="p-1 text-slate-400 hover:text-slate-600">
+                                                <X size={14} />
+                                            </button>
                                         )}
                                     </div>
-
-                                    <button
-                                        onClick={handleNextDay}
-                                        disabled={isToday}
-                                        className={`p-2.5 active:scale-90 transition-all rounded-xl ${isToday
-                                            ? 'text-slate-200 dark:text-white/5 cursor-not-allowed'
-                                            : 'text-slate-400 hover:text-indigo-500 hover:bg-slate-50 dark:hover:bg-white/5'
-                                            }`}
-                                    >
-                                        <ChevronRight size={18} />
-                                    </button>
                                 </div>
 
-                                <button
-                                    onClick={() => fetchData(false, true)}
-                                    className="w-12 h-12 bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-2xl flex items-center justify-center text-slate-400 shadow-sm active:scale-90 transition-all group"
-                                >
-                                    <RefreshCcw size={18} className={loading ? 'animate-spin text-indigo-500' : 'group-active:rotate-180 transition-transform duration-500'} />
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                                {/* Dual Dropdowns: Department + Shift (Matching Flutter) */}
+                                <div className="grid grid-cols-2 gap-2 px-3">
+                                    <div className="relative">
+                                        <select
+                                            value={selectedDept}
+                                            onChange={(e) => setSelectedDept(e.target.value)}
+                                            className="w-full h-9 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-github-dark-border rounded-xl px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none appearance-none truncate pr-7 cursor-pointer shadow-sm"
+                                        >
+                                            <option value="All">All Departments</option>
+                                            {departments.map((d, i) => (
+                                                <option key={i} value={d.dept_name || d}>{d.dept_name || d}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
 
-                    {/* Quick Stats Banner (Closely Packed) */}
-                    <div className="flex items-center justify-between pt-5 pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="flex -space-x-2">
-                                {activeEmployees.slice(0, 3).map((e, i) => (
-                                    <div key={i} className="w-6 h-6 rounded-full border-2 border-white dark:border-github-dark-subtle bg-slate-200 overflow-hidden shadow-sm">
-                                        {e.avatar.length > 1 ? <img src={`${e.avatar}?t=${avatarTimestamp}`} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[8px] font-black">{e.avatar}</div>}
+                                    <div className="relative">
+                                        <select
+                                            value={selectedShift}
+                                            onChange={(e) => setSelectedShift(e.target.value)}
+                                            className="w-full h-9 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-github-dark-border rounded-xl px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none appearance-none truncate pr-7 cursor-pointer shadow-sm"
+                                        >
+                                            <option value="All">All Shifts</option>
+                                            <option value="open_shift">Open Shift</option>
+                                            {shifts.map((s, i) => (
+                                                <option key={i} value={s.shift_id}>{s.shift_name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     </div>
-                                ))}
-                                {activeEmployees.length > 3 && (
-                                    <div className="w-6 h-6 rounded-full border-2 border-white dark:border-github-dark-subtle bg-indigo-500 flex items-center justify-center text-[8px] text-white font-black">
-                                        +{activeEmployees.length - 3}
+                                </div>
+
+                                {/* Quick Status Filter Chips (Matching Flutter) */}
+                                <div className="px-3 overflow-x-auto no-scrollbar">
+                                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                        {[
+                                            { key: 'All', label: 'All', count: stats.total, color: '#6366F1' },
+                                            { key: 'present', label: 'Present', count: stats.present, color: '#10B981' },
+                                            { key: 'late', label: 'Late', count: stats.late, color: '#F59E0B' },
+                                            { key: 'absent', label: 'Absent', count: stats.absent, color: '#EF4444' },
+                                            { key: 'on_leave', label: 'On Leave', count: onLeaveCount, color: '#8B5CF6' },
+                                        ].map(tab => {
+                                            const isSelected = statusFilter === tab.key;
+                                            return (
+                                                <button
+                                                    key={tab.key}
+                                                    onClick={() => setStatusFilter(tab.key)}
+                                                    style={{
+                                                        borderColor: isSelected ? tab.color : undefined,
+                                                        backgroundColor: isSelected ? `${tab.color}18` : undefined,
+                                                        color: isSelected ? tab.color : undefined
+                                                    }}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                                        isSelected
+                                                            ? 'font-semibold'
+                                                            : 'bg-slate-100 dark:bg-[#161B22] border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-slate-400'
+                                                    }`}
+                                                >
+                                                    <span>{tab.label}</span>
+                                                    <span
+                                                        style={{
+                                                            backgroundColor: isSelected ? tab.color : undefined,
+                                                            color: isSelected ? '#ffffff' : undefined
+                                                        }}
+                                                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                                            isSelected ? '' : 'bg-black/5 dark:bg-white/10 text-slate-500 dark:text-slate-400'
+                                                        }`}
+                                                    >
+                                                        {tab.count}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
-                                )}
+                                </div>
+
+                                {/* Employee Cards List (Matching Flutter _buildOverviewTab) */}
+                                <div className="px-3 space-y-2.5">
+                                    {loading && !attendanceData.length ? (
+                                        [1, 2, 3].map(i => <div key={i} className="h-24 bg-slate-200/50 dark:bg-white/5 animate-pulse rounded-2xl" />)
+                                    ) : filteredEmployees.length === 0 ? (
+                                        <div className="text-center py-16 bg-white dark:bg-[#161B22] rounded-2xl border border-slate-200/80 dark:border-github-dark-border p-6">
+                                            <p className="text-slate-400 text-xs font-semibold">No attendance records found.</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {presentEmployees.map(emp => (
+                                                <MonitoringCard key={emp.id} employee={emp} onClick={() => setSelectedEmployee(emp)} avatarTimestamp={avatarTimestamp} />
+                                            ))}
+
+                                            {presentEmployees.length > 0 && absentEmployees.length > 0 && (
+                                                <div className="flex items-center gap-3 py-2">
+                                                    <div className="h-px bg-slate-200 dark:bg-github-dark-border flex-1" />
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-widest">
+                                                        NOT CHECKED IN
+                                                    </span>
+                                                    <div className="h-px bg-slate-200 dark:bg-github-dark-border flex-1" />
+                                                </div>
+                                            )}
+
+                                            {absentEmployees.map(emp => (
+                                                <MonitoringCard key={emp.id} employee={emp} onClick={() => setSelectedEmployee(emp)} avatarTimestamp={avatarTimestamp} />
+                                            ))}
+                                        </>
+                                    )}
+                                </div>
                             </div>
-                            <span className="text-[10px] font-black text-slate-500 dark:text-github-dark-muted uppercase tracking-tighter">
-                                {activeEmployees.length} PRESENT TODAY
-                            </span>
+                        )}
+
+                        {activeSubTab === 'timeline' && (
+                            <div className="px-3">
+                                <TimelineView
+                                    data={filteredEmployees}
+                                    loading={loading}
+                                    onSelect={(emp) => setSelectedEmployee(emp)}
+                                    avatarTimestamp={avatarTimestamp}
+                                    orgTimezone={orgTimezone}
+                                />
+                            </div>
+                        )}
+
+                        {activeSubTab === 'analytics' && (
+                            <div className="px-3 space-y-4">
+                                {/* Attendance Pie */}
+                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border">
+                                    <h4 className="text-[11px] font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <PieChartIcon size={14} className="text-indigo-500" /> Attendance Distribution
+                                    </h4>
+                                    <div className="h-48 flex items-center justify-center">
+                                        <div className="w-1/2 h-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={chartData.status}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={35}
+                                                        outerRadius={55}
+                                                        paddingAngle={5}
+                                                        dataKey="value"
+                                                    >
+                                                        {chartData.status.map((entry, i) => (
+                                                            <Cell key={i} fill={entry.color} stroke="none" />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip
+                                                        contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '10px', fontWeight: 'bold' }}
+                                                    />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div className="w-1/2 space-y-2 pl-4">
+                                            {chartData.status.map((d, i) => (
+                                                <div key={i} className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                                                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">{d.name}: {d.value}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Activity Timeline */}
+                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="text-[11px] font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider flex items-center gap-2">
+                                            <Activity size={14} className="text-emerald-500" /> Peak Hours Velocity
+                                        </h4>
+                                        <div className="flex gap-3">
+                                            <div className="flex items-center gap-1">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                <span className="text-[9px] font-bold text-slate-400">ACTIVE</span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                                <span className="text-[9px] font-bold text-slate-400">NEW</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="h-44">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={chartData.timeline}>
+                                                <defs>
+                                                    <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                                    </linearGradient>
+                                                    <linearGradient id="colorNew" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                                                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888820" />
+                                                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }} />
+                                                <YAxis hide />
+                                                <Tooltip
+                                                    contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '10px', fontWeight: 'bold' }}
+                                                />
+                                                <Area type="monotone" name="Active Staff" dataKey="active" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorActive)" />
+                                                <Area type="monotone" name="New Check-ins" dataKey="checkins" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorNew)" />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* Department Health */}
+                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border">
+                                    <h4 className="text-[11px] font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <LayoutGrid size={14} className="text-purple-500" /> Department Health
+                                    </h4>
+                                    <div className="h-52">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={chartData.departments} margin={{ left: -30 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888820" />
+                                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: 700 }} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: 700 }} />
+                                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontWeight: 'bold' }} />
+                                                <Bar dataKey="Present" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                                                <Bar dataKey="Late" stackId="a" fill="#f59e0b" />
+                                                <Bar dataKey="Absent" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeSubTab === 'map' && (
+                            <div className="px-3">
+                                <MapView
+                                    data={filteredEmployees}
+                                    searchTerm={searchTerm}
+                                    selectedDept={selectedDept}
+                                    activeTheme={activeTheme}
+                                    MAP_THEMES={MAP_THEMES}
+                                    isThemeMenuOpen={isThemeMenuOpen}
+                                    setIsThemeMenuOpen={setIsThemeMenuOpen}
+                                    setActiveTheme={setActiveTheme}
+                                    avatarTimestamp={avatarTimestamp}
+                                />
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    /* --- CORRECTION REQUESTS TAB (Matching Flutter AdminCorrectionRequests) --- */
+                    <div className="max-w-lg mx-auto px-3 pt-3 space-y-3 pb-6">
+                        {/* Header: Title + Refresh (Matching Flutter _buildHeader) */}
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-base font-semibold text-slate-900 dark:text-white">Correction Requests</h3>
+                            <button
+                                onClick={() => fetchData(false, true)}
+                                className="p-2 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-500 hover:text-indigo-600 shadow-sm active:scale-95 transition-all"
+                                title="Refresh"
+                            >
+                                <RefreshCcw size={15} className={loading ? 'animate-spin text-indigo-500' : ''} />
+                            </button>
                         </div>
-                        <div className="flex items-center gap-2">
-                            {statusFilter !== 'All' && (
-                                <button
-                                    onClick={() => setStatusFilter('All')}
-                                    className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/20 rounded text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-500/30 transition-colors"
-                                >
-                                    <span>{statusFilter === 'total' ? 'Total' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late' : statusFilter === 'overtime' ? 'Overtime' : statusFilter === 'halfDay' ? 'Half Day' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Active' : statusFilter}</span>
-                                    <span>×</span>
+
+                        {/* Search Bar (Matching Flutter _buildSearchBar) */}
+                        <div className="relative flex items-center h-9 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-2.5 shadow-sm">
+                            <Search size={15} className="text-slate-400 shrink-0 mr-2" />
+                            <input
+                                type="text"
+                                value={requestSearchTerm}
+                                onChange={(e) => setRequestSearchTerm(e.target.value)}
+                                placeholder="Search correction requests..."
+                                className="w-full bg-transparent text-xs text-slate-800 dark:text-white placeholder:text-slate-400 outline-none"
+                            />
+                            {requestSearchTerm && (
+                                <button onClick={() => setRequestSearchTerm('')} className="p-1 text-slate-400 hover:text-slate-600">
+                                    <X size={14} />
                                 </button>
                             )}
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-full text-[9px] font-black uppercase">
-                                <span className="relative flex h-1.5 w-1.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                                </span>
-                                Live
+                        </div>
+
+                        {/* Filter Tabs (Matching Flutter _buildFilterTabs) */}
+                        <div className="overflow-x-auto no-scrollbar">
+                            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                {[
+                                    { label: 'All', count: requestCounts.all },
+                                    { label: 'Pending', count: requestCounts.pending },
+                                    { label: 'Approved', count: requestCounts.approved },
+                                    { label: 'Rejected', count: requestCounts.rejected },
+                                ].map(tab => {
+                                    const isActive = requestFilterStatus === tab.label;
+                                    return (
+                                        <button
+                                            key={tab.label}
+                                            onClick={() => setRequestFilterStatus(tab.label)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all border ${
+                                                isActive
+                                                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-semibold shadow-sm'
+                                                    : 'bg-white dark:bg-[#161B22] border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-slate-400'
+                                            }`}
+                                        >
+                                            <span>{tab.label}</span>
+                                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                                isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400'
+                                            }`}>
+                                                {tab.count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
                             </div>
+                        </div>
+
+                        {/* Requests List (Matching Flutter _buildRequestCard list) */}
+                        <div className="space-y-2.5 pt-1">
+                            {filteredRequests.length > 0 ? (
+                                filteredRequests.map(req => (
+                                    <RequestCard
+                                        key={req.acr_id || req.id}
+                                        request={req}
+                                        onClick={() => setSelectedRequest(req)}
+                                        avatarTimestamp={avatarTimestamp}
+                                    />
+                                ))
+                            ) : (
+                                <div className="text-center py-16 bg-white dark:bg-[#161B22] rounded-2xl border border-slate-200/80 dark:border-github-dark-border p-6">
+                                    <p className="text-slate-400 text-xs font-semibold">No {requestFilterStatus.toLowerCase()} requests found</p>
+                                </div>
+                            )}
                         </div>
                     </div>
-                </div>
+                )}
 
-                <div className="overflow-hidden">
-                    <AnimatePresence mode="wait" custom={direction} initial={false}>
-                        <motion.div
-                            key={`${activeTab}-${activeSubTab}`}
-                            custom={direction}
-                            variants={slideVariants}
-                            initial="enter"
-                            animate="center"
-                            exit="exit"
-                            transition={{
-                                x: { type: "spring", stiffness: 300, damping: 30 },
-                                opacity: { duration: 0.2 }
-                            }}
-                            drag={activeTab === 'dashboard' ? "x" : false}
-                            dragConstraints={{ left: 0, right: 0 }}
-                            dragElastic={0.2}
-                            onDragEnd={handleDragEnd}
-                            className="p-3 space-y-3 touch-pan-y"
-                        >
-                            {/* --- DASHBOARD VIEW --- */}
-                            {activeTab === 'dashboard' && (
-                                <div className="space-y-6">
-                                    {activeSubTab === 'overview' && (
-                                        <div className="space-y-6">
-                                            {/* Toolbar */}
-                                            <div className="flex gap-2 relative z-[60]">
-                                                <div className="relative flex-1 group">
-                                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Search employees..."
-                                                        value={searchTerm}
-                                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-white"
-                                                    />
-                                                </div>
-                                                <div className="relative flex gap-2">
-                                                    <div className="relative">
-                                                        <button 
-                                                            onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
-                                                            className={`w-12 h-12 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg flex items-center justify-center shadow-sm active:scale-90 transition-transform ${selectedDept !== 'All' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/20' : 'text-slate-400'}`}
-                                                            title="Filter by Department"
-                                                        >
-                                                            <Filter size={18} />
-                                                        </button>
-
-                                                        <AnimatePresence>
-                                                            {isDeptDropdownOpen && (
-                                                                <>
-                                                                    <div 
-                                                                        className="fixed inset-0 z-[80]" 
-                                                                        onClick={() => setIsDeptDropdownOpen(false)} 
-                                                                    />
-                                                                    <motion.div
-                                                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                        transition={{ duration: 0.15 }}
-                                                                        className="absolute right-0 mt-1.5 min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
-                                                                    >
-                                                                        <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                                                                            {DEPARTMENTS.map((dept, idx) => {
-                                                                                const deptName = typeof dept === 'object' && dept ? dept.dept_name || dept.value || '' : String(dept);
-                                                                                const isSelected = String(selectedDept) === String(deptName);
-                                                                                return (
-                                                                                    <button
-                                                                                        key={idx}
-                                                                                        onClick={() => {
-                                                                                            setSelectedDept(deptName);
-                                                                                            setIsDeptDropdownOpen(false);
-                                                                                        }}
-                                                                                        className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
-                                                                                                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                            }`}
-                                                                                    >
-                                                                                        <span>{deptName}</span>
-                                                                                        {isSelected && <Check size={12} className="text-indigo-500" />}
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </motion.div>
-                                                                </>
-                                                            )}
-                                                        </AnimatePresence>
-                                                    </div>
-
-                                                    <div className="relative">
-                                                        <button 
-                                                            onClick={() => setIsDesgDropdownOpen(!isDesgDropdownOpen)}
-                                                            className={`w-12 h-12 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg flex items-center justify-center shadow-sm active:scale-90 transition-transform ${selectedDesg !== 'All' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/20' : 'text-slate-400'}`}
-                                                            title="Filter by Designation"
-                                                        >
-                                                            <Briefcase size={18} />
-                                                        </button>
-
-                                                        <AnimatePresence>
-                                                            {isDesgDropdownOpen && (
-                                                                <>
-                                                                    <div 
-                                                                        className="fixed inset-0 z-[80]" 
-                                                                        onClick={() => setIsDesgDropdownOpen(false)} 
-                                                                    />
-                                                                    <motion.div
-                                                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                        transition={{ duration: 0.15 }}
-                                                                        className="absolute right-0 mt-1.5 min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
-                                                                    >
-                                                                        <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                                                                            {DESIGNATIONS.map((desg, idx) => {
-                                                                                const desgName = typeof desg === 'object' && desg ? desg.desg_name || desg.value || '' : String(desg);
-                                                                                const isSelected = String(selectedDesg) === String(desgName);
-                                                                                return (
-                                                                                    <button
-                                                                                        key={idx}
-                                                                                        onClick={() => {
-                                                                                            setSelectedDesg(desgName);
-                                                                                            setIsDesgDropdownOpen(false);
-                                                                                        }}
-                                                                                        className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
-                                                                                                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                            }`}
-                                                                                    >
-                                                                                        <span>{desgName}</span>
-                                                                                        {isSelected && <Check size={12} className="text-indigo-500" />}
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </motion.div>
-                                                                </>
-                                                            )}
-                                                        </AnimatePresence>
-                                                    </div>
-
-                                                    <div className="relative">
-                                                        <button 
-                                                            onClick={() => setIsShiftDropdownOpen(!isShiftDropdownOpen)}
-                                                            className={`w-12 h-12 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg flex items-center justify-center shadow-sm active:scale-90 transition-transform ${selectedShift !== 'All' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/20' : 'text-slate-400'}`}
-                                                            title="Filter by Shift"
-                                                        >
-                                                            <Clock size={18} />
-                                                        </button>
-
-                                                        <AnimatePresence>
-                                                            {isShiftDropdownOpen && (
-                                                                <>
-                                                                    <div 
-                                                                        className="fixed inset-0 z-[80]" 
-                                                                        onClick={() => setIsShiftDropdownOpen(false)} 
-                                                                    />
-                                                                    <motion.div
-                                                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                        transition={{ duration: 0.15 }}
-                                                                        className="absolute right-0 mt-1.5 min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
-                                                                    >
-                                                                        <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                                                                            {SHIFTS.map((s, idx) => {
-                                                                                const shiftLabel = s.label;
-                                                                                const shiftVal = s.value;
-                                                                                const isSelected = String(selectedShift) === String(shiftVal);
-                                                                                return (
-                                                                                    <button
-                                                                                        key={idx}
-                                                                                        onClick={() => {
-                                                                                            setSelectedShift(shiftVal);
-                                                                                            setIsShiftDropdownOpen(false);
-                                                                                        }}
-                                                                                        className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
-                                                                                                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                            }`}
-                                                                                    >
-                                                                                        <span>{shiftLabel}</span>
-                                                                                        {isSelected && <Check size={12} className="text-indigo-500" />}
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </motion.div>
-                                                                </>
-                                                            )}
-                                                        </AnimatePresence>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Stats Grid */}
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="col-span-2">
-                                                    <CompactStatCard label="Total Employees" value={stats.total} color="indigo" icon={Users} isSelected={statusFilter === 'total'} onClick={() => setStatusFilter(statusFilter === 'total' ? 'All' : 'total')} />
-                                                </div>
-                                                <CompactStatCard label="Present" value={stats.present} color="emerald" icon={UserCheck} isSelected={statusFilter === 'present'} onClick={() => setStatusFilter(statusFilter === 'present' ? 'All' : 'present')} />
-                                                <CompactStatCard label="Late" value={stats.late} color="amber" icon={Clock} isSelected={statusFilter === 'late'} onClick={() => setStatusFilter(statusFilter === 'late' ? 'All' : 'late')} />
-                                                <CompactStatCard label="Overtime" value={stats.overtime} color="violet" icon={TrendingUp} isSelected={statusFilter === 'overtime'} onClick={() => setStatusFilter(statusFilter === 'overtime' ? 'All' : 'overtime')} />
-                                                <CompactStatCard label="Active" value={stats.active} color="blue" icon={Activity} isSelected={statusFilter === 'active'} onClick={() => setStatusFilter(statusFilter === 'active' ? 'All' : 'active')} />
-                                                <CompactStatCard label="Half Day" value={stats.halfDay} color="indigo" icon={Clock} isSelected={statusFilter === 'halfDay'} onClick={() => setStatusFilter(statusFilter === 'halfDay' ? 'All' : 'halfDay')} />
-                                                <div className="col-span-2">
-                                                    <CompactStatCard label="Absent" value={stats.absent} color="rose" icon={UserX} isSelected={statusFilter === 'absent'} onClick={() => setStatusFilter(statusFilter === 'absent' ? 'All' : 'absent')} />
-                                                </div>
-                                            </div>
-
-                                            {/* List Section */}
-                                            <div className="space-y-3">
-                                                {loading && !attendanceData.length ? (
-                                                    [1, 2, 3].map(i => <div key={i} className="h-24 bg-slate-100 dark:bg-dark-card animate-pulse rounded-lg" />)
-                                                ) : filteredEmployees.length > 0 ? (
-                                                    <>
-                                                        {activeEmployees.map(emp => (
-                                                            <CompactEmployeeCard key={emp.id} employee={emp} onClick={() => setSelectedEmployee(emp)} avatarTimestamp={avatarTimestamp} />
-                                                        ))}
-
-                                                        {absentEmployees.length > 0 && (
-                                                            <div className="flex items-center gap-4 py-4">
-                                                                <div className="h-px bg-slate-200 dark:bg-white/5 flex-1" />
-                                                                <span className="text-[10px] font-black text-slate-300 dark:text-github-dark-muted uppercase tracking-widest">NOT CHECKED IN</span>
-                                                                <div className="h-px bg-slate-200 dark:bg-white/5 flex-1" />
-                                                            </div>
-                                                        )}
-
-                                                        {absentEmployees.map(emp => (
-                                                            <CompactEmployeeCard key={emp.id} employee={emp} onClick={() => setSelectedEmployee(emp)} avatarTimestamp={avatarTimestamp} />
-                                                        ))}
-                                                    </>
-                                                ) : (
-                                                    <div className="text-center py-20 bg-white dark:bg-dark-card rounded-lg border-2 border-dashed border-slate-100 dark:border-github-dark-border">
-                                                        <p className="text-slate-400 font-bold text-sm">No employees found</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeSubTab === 'timeline' && (
-                                        <TimelineView
-                                            data={filteredEmployees}
-                                            loading={loading}
-                                            onSelect={(emp) => setSelectedEmployee(emp)}
-                                            avatarTimestamp={avatarTimestamp}
-                                            orgTimezone={orgTimezone}
-                                        />
-                                    )}
-
-                                    {activeSubTab === 'analytics' && (
-                                        <div className="space-y-6">
-                                            {/* Attendance Pie */}
-                                            <div className="bg-white dark:bg-dark-card p-6 rounded-lg shadow-sm border border-slate-100 dark:border-github-dark-border">
-                                                <h4 className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest mb-6 flex items-center gap-2">
-                                                    <PieChartIcon size={12} className="text-indigo-500" /> Attendance Distribution
-                                                </h4>
-                                                <div className="h-48 flex items-center justify-center">
-                                                    <div className="w-1/2 h-full">
-                                                        <ResponsiveContainer width="100%" height="100%">
-                                                            <PieChart>
-                                                                <Pie
-                                                                    data={chartData.status}
-                                                                    cx="50%"
-                                                                    cy="50%"
-                                                                    innerRadius={35}
-                                                                    outerRadius={55}
-                                                                    paddingAngle={5}
-                                                                    dataKey="value"
-                                                                >
-                                                                    {chartData.status.map((entry, i) => (
-                                                                        <Cell key={i} fill={entry.color} stroke="none" />
-                                                                    ))}
-                                                                </Pie>
-                                                                <Tooltip
-                                                                    contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', borderRadius: '12px', color: '#fff', fontSize: '10px', fontWeight: 'bold' }}
-                                                                />
-                                                            </PieChart>
-                                                        </ResponsiveContainer>
-                                                    </div>
-                                                    <div className="w-1/2 space-y-2 pl-4">
-                                                        {chartData.status.map((d, i) => (
-                                                            <div key={i} className="flex items-center gap-2">
-                                                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
-                                                                <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-tighter">{d.name}: {d.value}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Activity Timeline */}
-                                            <div className="bg-white dark:bg-dark-card p-6 rounded-lg shadow-sm border border-slate-100 dark:border-github-dark-border">
-                                                <div className="flex items-center justify-between mb-6">
-                                                    <h4 className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest flex items-center gap-2">
-                                                        <Activity size={12} className="text-emerald-500" /> Peak Hours Velocity
-                                                    </h4>
-                                                    <div className="flex gap-3">
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                            <span className="text-[8px] font-black text-slate-400">ACTIVE</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                                                            <span className="text-[8px] font-black text-slate-400">NEW</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="h-48">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <AreaChart data={chartData.timeline}>
-                                                            <defs>
-                                                                <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                                                </linearGradient>
-                                                                <linearGradient id="colorNew" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                                                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                                                                </linearGradient>
-                                                            </defs>
-                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888820" />
-                                                            <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 800, fill: '#64748b' }} />
-                                                            <YAxis hide />
-                                                            <Tooltip
-                                                                contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', borderRadius: '12px', color: '#fff', fontSize: '10px', fontWeight: 'bold' }}
-                                                            />
-                                                            <Area type="monotone" name="Active Staff" dataKey="active" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorActive)" />
-                                                            <Area type="monotone" name="New Check-ins" dataKey="checkins" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorNew)" />
-                                                        </AreaChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                            </div>
-
-                                            {/* Department Metrics */}
-                                            <div className="bg-white dark:bg-dark-card p-6 rounded-lg shadow-sm border border-slate-100 dark:border-github-dark-border">
-                                                <h4 className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest mb-6 flex items-center gap-2">
-                                                    <LayoutGrid size={12} className="text-purple-500" /> Department Health
-                                                </h4>
-                                                <div className="h-56">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <BarChart data={chartData.departments} margin={{ left: -30 }}>
-                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888820" />
-                                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: 800 }} />
-                                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: 800 }} />
-                                                            <Tooltip
-                                                                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
-                                                            />
-                                                            <Bar dataKey="Present" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-                                                            <Bar dataKey="Late" stackId="a" fill="#f59e0b" />
-                                                            <Bar dataKey="Absent" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                                                        </BarChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                            </div>
-
-                                            {/* Login Frequency */}
-                                            <div className="bg-white dark:bg-dark-card p-6 rounded-lg shadow-sm border border-slate-100 dark:border-github-dark-border">
-                                                <h4 className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest mb-6 flex items-center gap-2">
-                                                    <BarChartIcon size={12} className="text-rose-500" /> Session Intensity
-                                                </h4>
-                                                <div className="h-48">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <BarChart data={chartData.frequency} layout="vertical" margin={{ left: -10 }}>
-                                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#88888820" />
-                                                            <XAxis type="number" hide />
-                                                            <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: 800, fill: '#64748b' }} width={70} />
-                                                            <Tooltip
-                                                                contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', borderRadius: '12px', color: '#fff', fontSize: '10px', fontWeight: 'bold' }}
-                                                            />
-                                                            <Bar dataKey="value" name="Employees" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={12}>
-                                                                {chartData.frequency.map((entry, index) => (
-                                                                    <Cell key={`cell-${index}`} fill="url(#gradBar)" />
-                                                                ))}
-                                                            </Bar>
-                                                            <defs>
-                                                                <linearGradient id="gradBar" x1="0" y1="0" x2="1" y2="0">
-                                                                    <stop offset="0%" stopColor="#6366f1" />
-                                                                    <stop offset="100%" stopColor="#a855f7" />
-                                                                </linearGradient>
-                                                            </defs>
-                                                        </BarChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeSubTab === 'map' && (
-                                        <MapView
-                                            data={filteredEmployees}
-                                            searchTerm={searchTerm}
-                                            selectedDept={selectedDept}
-                                            activeTheme={activeTheme}
-                                            MAP_THEMES={MAP_THEMES}
-                                            isThemeMenuOpen={isThemeMenuOpen}
-                                            setIsThemeMenuOpen={setIsThemeMenuOpen}
-                                            setActiveTheme={setActiveTheme}
-                                            avatarTimestamp={avatarTimestamp}
-                                        />
-                                    )}
-                                </div>
-                            )}
-
-                            {/* --- REQUESTS VIEW --- */}
-                            {activeTab === 'requests' && (
-                                <div className="space-y-3">
-                                    <div className="flex bg-slate-100 dark:bg-black/20 p-1 rounded-xl">
-                                        {['PENDING', 'HISTORY'].map(f => (
-                                            <button
-                                                key={f}
-                                                onClick={() => setRequestSubTab(f)}
-                                                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${requestSubTab === f
-                                                    ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm'
-                                                    : 'text-slate-400 dark:text-github-dark-muted'
-                                                    }`}
-                                            >
-                                                {f}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {(() => {
-                                        const filtered = correctionRequests.filter(r => {
-                                            const status = (r.status || '').toUpperCase();
-                                            return requestSubTab === 'PENDING' ? status === 'PENDING' : status !== 'PENDING';
-                                        });
-
-                                        return filtered.length > 0 ? (
-                                            filtered.map(req => (
-                                                <button
-                                                    key={req.acr_id}
-                                                    onClick={() => setSelectedRequest(req)}
-                                                                                                        className={`w-full p-4 rounded-xl border transition-all text-left active:scale-[0.98] flex flex-col ${selectedRequest?.acr_id === req.acr_id
-                                                            ? 'bg-indigo-50/30 dark:bg-indigo-950/20 border-indigo-500/30 dark:border-indigo-500/40 shadow-sm shadow-indigo-500/5'
-                                                            : 'bg-slate-50/40 dark:bg-github-dark-subtle/20 border-slate-200/60 dark:border-github-dark-border/80 hover:bg-slate-50/80 dark:hover:bg-github-dark-subtle/40 hover:border-slate-300 dark:hover:border-github-dark-border'
-                                                        }`}
-                                                >
-                                                    <div className="w-full flex justify-between items-start mb-2.5">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-bold text-xs text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
-                                                                {req.profile_image_url && req.profile_image_url.startsWith('http') ? (
-                                                                    <img src={`${req.profile_image_url}?t=${avatarTimestamp}`} alt={req.user_name} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    (req.user_name || 'U').charAt(0).toUpperCase()
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <h4 className={`text-sm font-semibold leading-none mb-1 ${selectedRequest?.acr_id === req.acr_id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-white'}`}>{req.user_name}</h4>
-                                                                <p className="text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">ID: {req.user_id}</p>
-                                                            </div>
-                                                        </div>
-                                                        <span className={getRequestTypeStyle(req.correction_type)}>
-                                                            {(req.correction_type || '').replace('_', ' ')}
-                                                        </span>
-                                                    </div>
-                                                    <div className="w-full flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted mt-2 border-t border-slate-100 dark:border-github-dark-border/40 pt-2.5">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <Calendar size={12} className="text-slate-400" />
-                                                            <span>{new Date(req.request_date).toLocaleDateString()}</span>
-                                                        </div>
-                                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                                            (req.status || '').toLowerCase() === 'pending'
-                                                                ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
-                                                                : (req.status || '').toLowerCase() === 'approved' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400'
-                                                        }`}>
-                                                            {req.status}
-                                                        </span>
-                                                    </div>
-                                                </button>
-                                            ))
-                                        ) : (
-                                            <div className="text-center py-20 bg-white dark:bg-dark-card rounded-lg border border-dashed border-slate-200 dark:border-github-dark-border">
-                                                <p className="text-slate-400 font-bold text-sm">No {requestSubTab.toLowerCase()} requests</p>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            )}
-                        </motion.div>
-                    </AnimatePresence>
-                </div>
-
-                {/* --- MODALS --- */}
+                {/* --- MODALS (Rendered directly with AnimatePresence) --- */}
                 <AnimatePresence>
                     {selectedEmployee && (
                         <EmployeeDetailModal
@@ -1341,10 +1386,28 @@ const MobileAttendanceMonitoring = () => {
                             avatarTimestamp={avatarTimestamp}
                         />
                     )}
+                </AnimatePresence>
+
+                <AnimatePresence>
                     {selectedRequest && (
-                        <RequestDetailModal request={selectedRequest} onClose={() => setSelectedRequest(null)} onUpdate={() => fetchData(true, true)} />
+                        <RequestDetailModal
+                            request={selectedRequest}
+                            onClose={() => setSelectedRequest(null)}
+                            onUpdate={() => fetchData(true, true)}
+                        />
                     )}
                 </AnimatePresence>
+
+                {/* AI Summary Modal */}
+                <AiSummaryModal
+                    isOpen={isAiSummaryOpen}
+                    onClose={() => setIsAiSummaryOpen(false)}
+                    date={selectedDate}
+                    data={aiSummaryData}
+                    loading={aiSummaryLoading}
+                    error={aiSummaryError}
+                    onRegenerate={generateAiSummary}
+                />
             </div>
         </MobileDashboardLayout>
     );
@@ -1443,100 +1506,190 @@ const TimelineView = ({ data, loading, onSelect, avatarTimestamp, orgTimezone })
     );
 };
 
-const CompactStatCard = ({ label, value, color, icon: Icon, isSelected, onClick }) => {
-    const colors = {
-        emerald: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600',
-        amber: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600',
-        violet: 'bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400',
-        rose: 'bg-rose-50 dark:bg-rose-500/10 text-rose-600',
-        blue: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600',
-        indigo: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
-    };
+const StatCard = ({ title, value, total, contextText, icon: Icon, baseColor, isSelected, onClick }) => {
     return (
         <div
             onClick={onClick}
-            className={`p-3 rounded-lg shadow-sm flex items-center gap-3 cursor-pointer select-none bg-white dark:bg-dark-card transition-all duration-300 border-2 ${
+            style={{
+                borderColor: isSelected ? baseColor : undefined,
+            }}
+            className={`p-3 rounded-2xl bg-white dark:bg-[#161B22] border transition-all duration-200 shadow-sm active:scale-[0.98] cursor-pointer flex flex-col justify-between ${
                 isSelected
-                    ? 'border-indigo-500 dark:border-indigo-500 scale-[1.01] shadow-md'
-                    : 'border-slate-100 dark:border-github-dark-border hover:border-slate-350 dark:hover:border-slate-700'
+                    ? 'ring-2 ring-indigo-500/20 shadow-md border-indigo-500'
+                    : 'border-slate-200/80 dark:border-github-dark-border hover:border-slate-300'
             }`}
         >
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${colors[color]}`}>
-                <Icon size={16} strokeWidth={3} />
+            <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{title}</span>
+                <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${baseColor}1A`, color: baseColor }}
+                >
+                    <Icon size={14} />
+                </div>
             </div>
-            <div>
-                <p className="text-[9px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider leading-none mb-1">{label}</p>
-                <p className="text-base font-black text-slate-800 dark:text-white leading-none">{value}</p>
+
+            <div className="mt-2 mb-1 flex items-baseline gap-1">
+                <span className="text-xl font-bold text-slate-900 dark:text-white leading-none">{value}</span>
+                {total && <span className="text-xs font-semibold text-slate-400 leading-none">{total}</span>}
+            </div>
+
+            <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 truncate">{contextText}</span>
+        </div>
+    );
+};
+
+const MonitoringCard = ({ employee, onClick, avatarTimestamp }) => {
+    const getStatusTheme = (label) => {
+        switch (label) {
+            case 'Active':
+            case 'Late Active':
+                return { bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-blue-200 dark:border-blue-800/40', text: 'text-blue-600 dark:text-blue-400' };
+            case 'Present':
+                return { bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200 dark:border-emerald-800/40', text: 'text-emerald-600 dark:text-emerald-400' };
+            case 'Late':
+                return { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-800/40', text: 'text-amber-600 dark:text-amber-400' };
+            case 'Absent':
+                return { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800/40', text: 'text-rose-600 dark:text-rose-400' };
+            case 'Half Day':
+                return { bg: 'bg-indigo-50 dark:bg-indigo-950/30', border: 'border-indigo-200 dark:border-indigo-800/40', text: 'text-indigo-600 dark:text-indigo-400' };
+            case 'Leave':
+            case 'Week Off':
+            case 'Holiday':
+                return { bg: 'bg-purple-50 dark:bg-purple-950/30', border: 'border-purple-200 dark:border-purple-800/40', text: 'text-purple-600 dark:text-purple-400' };
+            default:
+                return { bg: 'bg-slate-100 dark:bg-slate-800', border: 'border-slate-200 dark:border-slate-700', text: 'text-slate-600 dark:text-slate-400' };
+        }
+    };
+
+    const statusStyle = getStatusTheme(employee.status);
+    const firstSession = employee.sessions && employee.sessions.length > 0 ? employee.sessions[0] : null;
+    const lastSession = employee.sessions && employee.sessions.length > 0 ? employee.sessions[employee.sessions.length - 1] : null;
+
+    const timeIn = firstSession?.in && firstSession.in !== '-' ? firstSession.in : '--';
+    const timeOut = lastSession?.out && lastSession.out !== '-' ? lastSession.out : '--';
+    const shiftName = employee.shift_name || (employee.shift_id ? `Shift #${employee.shift_id}` : 'General');
+
+    return (
+        <div
+            onClick={onClick}
+            className="p-3.5 rounded-2xl bg-white dark:bg-[#161B22] border border-slate-200/80 dark:border-github-dark-border shadow-sm active:scale-[0.99] hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-all cursor-pointer"
+        >
+            {/* Row 1: Profile + Status */}
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800/30 overflow-hidden shrink-0 flex items-center justify-center font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                    {employee.avatar && employee.avatar.length > 1 ? (
+                        <img src={`${employee.avatar}?t=${avatarTimestamp}`} alt={employee.name} className="w-full h-full object-cover" />
+                    ) : (
+                        (employee.avatar || 'U')
+                    )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate leading-tight">
+                        {employee.name}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {employee.role} • {employee.department}
+                    </p>
+                </div>
+
+                {/* Status Badge */}
+                <div className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${statusStyle.bg} ${statusStyle.border} ${statusStyle.text} shrink-0`}>
+                    {employee.status}
+                </div>
+            </div>
+
+            {/* Divider */}
+            <div className="h-px bg-slate-100 dark:bg-github-dark-border/40 my-2.5" />
+
+            {/* Row 2: Metrics */}
+            <div className="grid grid-cols-3 gap-2 text-left">
+                <div>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 block">Time In</span>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block truncate mt-0.5">{timeIn}</span>
+                </div>
+                <div>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 block">Time Out</span>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block truncate mt-0.5">{timeOut}</span>
+                </div>
+                <div>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 block">Shift</span>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block truncate mt-0.5">{shiftName}</span>
+                </div>
             </div>
         </div>
     );
 };
 
-const CompactEmployeeCard = ({ employee, onClick, avatarTimestamp }) => {
-    const isAbsentOrNonWorking = ['Absent', 'Week Off', 'Holiday', 'Leave'].includes(employee.status);
+const RequestCard = ({ request, onClick, avatarTimestamp }) => {
+    const status = (request.status || 'PENDING').toUpperCase();
+    const isApproved = status === 'APPROVED';
+    const isRejected = status === 'REJECTED';
+
+    const statusBadge = isApproved
+        ? { bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200 dark:border-emerald-800/40', text: 'text-emerald-600 dark:text-emerald-400' }
+        : isRejected
+        ? { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800/40', text: 'text-rose-600 dark:text-rose-400' }
+        : { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-800/40', text: 'text-amber-600 dark:text-amber-400' };
+
+    const proposedHours = calculateProposedHours(request);
+
     return (
         <div
             onClick={onClick}
-            className={`bg-white dark:bg-dark-card p-3 rounded-lg border border-slate-100 dark:border-github-dark-border/60 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-all relative overflow-hidden ${isAbsentOrNonWorking ? 'opacity-70 grayscale-[0.5]' : ''}`}
+            className="p-3.5 rounded-2xl bg-white dark:bg-[#161B22] border border-slate-200/80 dark:border-github-dark-border shadow-sm active:scale-[0.99] hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-all cursor-pointer space-y-2"
         >
-            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-white/5 overflow-hidden border border-slate-200 dark:border-github-dark-border shrink-0">
-                {employee.avatar.length > 1 ? (
-                    <img src={`${employee.avatar}?t=${avatarTimestamp}`} className="w-full h-full object-cover" />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center text-indigo-500 font-black text-xs">{employee.avatar}</div>
-                )}
-            </div>
-            <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center mb-0.5">
-                    <h4 className="font-black text-[13px] text-slate-800 dark:text-white truncate pr-2 leading-none">{employee.name}</h4>
-                    <div className="flex items-center gap-1 flex-wrap justify-end">
-                        {employee.allStatuses && employee.allStatuses.length > 0 ? (
-                            employee.allStatuses.map(s => (
-                                <span key={s} className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${
-                                    s.includes('Active') ? 'bg-indigo-100 text-indigo-600 animate-pulse' :
-                                    s.includes('Late') ? 'bg-amber-100 text-amber-600' :
-                                    s === 'Present' ? 'bg-emerald-100 text-emerald-600' :
-                                    s === 'Overtime' ? 'bg-purple-100 text-purple-600' :
-                                    s === 'Half Day' ? 'bg-indigo-100 text-indigo-600' :
-                                    s === 'Missed Punch' ? 'bg-rose-100 text-rose-600' :
-                                    s === 'Week Off' ? 'bg-slate-100 text-slate-500 border border-dashed border-slate-200' :
-                                    s === 'Holiday' ? 'bg-sky-50 text-sky-600 border border-sky-100' :
-                                    s === 'Leave' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
-                                    'bg-slate-100 text-slate-500'
-                                }`}>
-                                    {s}
-                                </span>
-                            ))
-                        ) : (
-                            <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${
-                                employee.status.includes('Active') ? 'bg-indigo-100 text-indigo-600 animate-pulse' :
-                                employee.status.includes('Late') ? 'bg-amber-100 text-amber-600' :
-                                employee.status === 'Present' ? 'bg-emerald-100 text-emerald-600' :
-                                employee.status === 'Overtime' ? 'bg-purple-100 text-purple-600' :
-                                employee.status === 'Half Day' ? 'bg-indigo-100 text-indigo-600' :
-                                employee.status === 'Missed Punch' ? 'bg-rose-100 text-rose-600' :
-                                'bg-slate-100 text-slate-500'
-                            }`}>
-                                {employee.status}
-                            </span>
-                        )}
-                    </div>
+            {/* Top Row: Avatar + Name + ID/Type + Status */}
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800/30 overflow-hidden shrink-0 flex items-center justify-center font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                    {request.profile_image_url && request.profile_image_url.startsWith('http') ? (
+                        <img src={`${request.profile_image_url}?t=${avatarTimestamp}`} alt={request.user_name} className="w-full h-full object-cover" />
+                    ) : (
+                        (request.user_name || 'U').charAt(0).toUpperCase()
+                    )}
                 </div>
-                <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-tighter truncate leading-none mb-2">{employee.role} • {employee.department}</p>
 
+                <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate leading-tight">
+                        {request.user_name}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        #{request.acr_id || request.id} • {(request.correction_type || '').replace(/_/g, ' ')}
+                    </p>
+                </div>
 
+                <div className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${statusBadge.bg} ${statusBadge.border} ${statusBadge.text} shrink-0`}>
+                    {status}
+                </div>
+            </div>
 
-                {!isAbsentOrNonWorking && employee.sessions.length > 0 && (
-                    <div className="flex items-center gap-3 pt-2 border-t border-slate-50 dark:border-github-dark-border/50">
-                        <div className="flex items-center gap-1">
-                            <Clock size={8} className="text-slate-300" />
-                            <span className="text-[9px] font-black text-slate-700 dark:text-slate-300">
-                                {employee.sessions[0].in} → {employee.sessions[0].out === '-' ? 'Active' : employee.sessions[0].out}
-                            </span>
-                        </div>
-                    </div>
+            {/* Middle Row: Date & Proposed Hours */}
+            <div className="flex items-center justify-between pt-1">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    {formatHeaderDate(request.request_date)}
+                </span>
+                {proposedHours && Number(proposedHours) > 0 && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30">
+                        {proposedHours} hrs
+                    </span>
                 )}
             </div>
+
+            {/* Reason Snippet */}
+            <p className="text-xs text-slate-500 dark:text-slate-400 italic line-clamp-1">
+                "{request.reason || 'No explanation provided.'}"
+            </p>
+
+            {/* Attachment Chip if present */}
+            {request.attachment_url && (
+                <div className="flex items-center gap-1.5 text-[11px] text-indigo-600 dark:text-indigo-400 pt-0.5">
+                    <Paperclip size={12} />
+                    <span className="truncate max-w-[200px]">
+                        {request.attachment_url.split('?')[0].split('/').pop()}
+                    </span>
+                </div>
+            )}
         </div>
     );
 };
@@ -1544,19 +1697,28 @@ const CompactEmployeeCard = ({ employee, onClick, avatarTimestamp }) => {
 const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
     const [previewImage, setPreviewImage] = useState(null);
 
-    return createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-end">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={onClose} />
+    return (
+        <motion.div
+            key="employee-detail-modal-root"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center"
+        >
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" onClick={onClose} />
             <motion.div
-                initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                className="relative w-full bg-slate-50 dark:bg-dark-card rounded-t-xl p-6 pb-12 max-h-[90vh] overflow-y-auto border-t border-slate-200 dark:border-github-dark-border"
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                className="relative w-full max-w-lg bg-slate-50 dark:bg-github-dark-bg rounded-t-[2rem] sm:rounded-2xl p-6 pb-12 max-h-[90vh] overflow-y-auto border-t border-slate-200 dark:border-github-dark-border shadow-2xl z-10"
             >
                 {/* Lightbox Preview */}
                 <AnimatePresence>
                     {previewImage && (
                         <motion.div
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[120] bg-black/95 flex items-center justify-center p-4"
+                            className="fixed inset-0 z-[9100] bg-black/95 flex items-center justify-center p-4"
                             onClick={() => setPreviewImage(null)}
                         >
                             <button className="absolute top-6 right-6 text-white p-2 bg-white/10 rounded-full"><X size={24} /></button>
@@ -1569,26 +1731,26 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                     )}
                 </AnimatePresence>
 
-                <div className="w-12 h-1 bg-slate-200 dark:bg-white/10 rounded-full mx-auto mb-8" />
+                <div className="w-12 h-1 bg-slate-200 dark:bg-white/10 rounded-full mx-auto mb-6" />
 
-                <div className="flex items-center gap-5 mb-8">
-                    <div className="w-16 h-16 rounded-lg bg-white dark:bg-dark-card border-2 border-white dark:border-github-dark-border overflow-hidden shadow-xl">
-                        {employee.avatar.length > 1 ? <img src={`${employee.avatar}?t=${avatarTimestamp}`} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-2xl font-black text-indigo-500">{employee.avatar}</div>}
+                <div className="flex items-center gap-4 mb-6">
+                    <div className="w-14 h-14 rounded-2xl bg-white dark:bg-dark-card border-2 border-white dark:border-github-dark-border overflow-hidden shadow-lg flex items-center justify-center">
+                        {employee.avatar.length > 1 ? <img src={`${employee.avatar}?t=${avatarTimestamp}`} className="w-full h-full object-cover" /> : <div className="text-xl font-black text-indigo-500">{employee.avatar}</div>}
                     </div>
                     <div>
-                        <h3 className="text-xl font-black text-slate-800 dark:text-white leading-none mb-2">{employee.name}</h3>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-tight mb-1">{employee.name}</h3>
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-widest">{employee.role}</span>
+                            <span className="text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">{employee.role}</span>
                             <span className="w-1 h-1 rounded-full bg-slate-300" />
-                            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{employee.department}</span>
+                            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">{employee.department}</span>
                         </div>
                     </div>
                 </div>
 
                 {((employee.allStatuses && employee.allStatuses.includes('Late')) || (employee.lateMinutes > 0) || employee.status.includes('Late')) && (
-                    <div className="p-3 mb-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
-                        <h5 className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-500 tracking-widest mb-1 flex items-center gap-1.5">
-                            <AlertCircle size={10} /> Reason
+                    <div className="p-3 mb-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm">
+                        <h5 className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-500 tracking-wider mb-1 flex items-center gap-1.5">
+                            <AlertCircle size={12} /> Reason for Late
                         </h5>
                         <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
                             {employee.lateReason ? `"${employee.lateReason}"` : "No reason provided."}
@@ -1597,9 +1759,9 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                 )}
 
                 {((employee.allStatuses && employee.allStatuses.includes('Overtime')) || (employee.overtimeHours > 0) || employee.status.includes('Overtime')) && (
-                    <div className="p-3 mb-6 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
-                        <h5 className="text-[9px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-widest mb-1 flex items-center gap-1.5">
-                            <TrendingUp size={10} /> Overtime Worked
+                    <div className="p-3 mb-4 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl shadow-sm">
+                        <h5 className="text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400 tracking-wider mb-1 flex items-center gap-1.5">
+                            <TrendingUp size={12} /> Overtime Worked
                         </h5>
                         <p className="text-xs text-purple-800 dark:text-purple-200 leading-relaxed">
                             {employee.overtimeHours ? `${employee.overtimeHours} hrs overtime` : 'Overtime detected according to shift policy.'}
@@ -1607,74 +1769,55 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                     </div>
                 )}
 
-                <div className="space-y-6">
-                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 flex justify-between">
+                <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1 flex justify-between">
                         <span>Daily Activity</span>
-                        <span className="text-slate-300">{new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span className="text-slate-400 font-normal">{formatPlatformDate(date)}</span>
                     </h4>
 
                     {employee.sessions.length > 0 ? (
                         employee.sessions.map((s, i) => (
-                            <div key={i} className="bg-white dark:bg-dark-card p-5 rounded-lg border border-slate-100 dark:border-github-dark-border shadow-sm space-y-4">
+                            <div key={i} className="bg-white dark:bg-dark-card p-4 rounded-xl border border-slate-100 dark:border-github-dark-border shadow-sm space-y-3">
                                 <div className="flex justify-between items-center pb-2 border-b border-slate-50 dark:border-white/5">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                                         <Clock size={12} /> Session #{employee.sessions.length - i}
                                     </span>
-                                    {s.isActive && <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 animate-pulse">Active</span>}
+                                    {s.isActive && <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 animate-pulse">Active</span>}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-3">
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><LogIn size={12} /></div>
-                                                <span className="text-lg font-black text-slate-800 dark:text-white">{s.in}</span>
-                                            </div>
-                                            <div className="flex items-start gap-1.5 px-0.5">
-                                                <MapPin size={10} className="shrink-0 mt-0.5 text-emerald-500 opacity-60" />
-                                                <span className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted leading-tight break-words">{s.inLocation}</span>
-                                            </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><LogIn size={12} /></div>
+                                            <span className="text-base font-bold text-slate-800 dark:text-white">{s.in}</span>
                                         </div>
+                                        {s.inLocation && (
+                                            <div className="flex items-start gap-1 px-0.5">
+                                                <MapPin size={10} className="shrink-0 mt-0.5 text-emerald-500 opacity-60" />
+                                                <span className="text-[10px] text-slate-400 dark:text-github-dark-muted leading-tight break-words">{s.inLocation}</span>
+                                            </div>
+                                        )}
                                         {s.inImage && (
-                                            <div className="flex justify-center w-full mt-2">
-                                                <div
-                                                    onClick={() => setPreviewImage(s.inImage)}
-                                                    className="relative rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border shadow-sm group active:scale-95 transition-all bg-transparent"
-                                                >
-                                                    <img src={s.inImage} className="max-h-40 max-w-full w-auto block object-contain" />
-                                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <Camera size={16} className="text-white" />
-                                                    </div>
-                                                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[7px] font-black text-white uppercase tracking-tighter">Selfie In</div>
-                                                </div>
+                                            <div className="w-full mt-1.5" onClick={() => setPreviewImage(s.inImage)}>
+                                                <img src={s.inImage} className="max-h-32 rounded-lg object-contain cursor-pointer shadow-sm border border-slate-100 dark:border-github-dark-border" />
                                             </div>
                                         )}
                                     </div>
-                                    <div className="space-y-3">
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-6 h-6 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center"><LogOut size={12} /></div>
-                                                <span className="text-lg font-black text-slate-800 dark:text-white">{s.out}</span>
-                                            </div>
-                                            {s.outLocation && (
-                                                <div className="flex items-start gap-1.5 px-0.5">
-                                                    <MapPin size={10} className="shrink-0 mt-0.5 text-rose-500 opacity-60" />
-                                                    <span className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted leading-tight break-words">{s.outLocation}</span>
-                                                </div>
-                                            )}
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center"><LogOut size={12} /></div>
+                                            <span className="text-base font-bold text-slate-800 dark:text-white">{s.out}</span>
                                         </div>
+                                        {s.outLocation && (
+                                            <div className="flex items-start gap-1 px-0.5">
+                                                <MapPin size={10} className="shrink-0 mt-0.5 text-rose-500 opacity-60" />
+                                                <span className="text-[10px] text-slate-400 dark:text-github-dark-muted leading-tight break-words">{s.outLocation}</span>
+                                            </div>
+                                        )}
                                         {s.outImage && (
-                                            <div className="flex justify-center w-full mt-2">
-                                                <div
-                                                    onClick={() => setPreviewImage(s.outImage)}
-                                                    className="relative rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border shadow-sm group active:scale-95 transition-all bg-transparent"
-                                                >
-                                                    <img src={s.outImage} className="max-h-40 max-w-full w-auto block object-contain" />
-                                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <Camera size={16} className="text-white" />
-                                                    </div>
-                                                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[7px] font-black text-white uppercase tracking-tighter">Selfie Out</div>
-                                                </div>
+                                            <div className="w-full mt-1.5" onClick={() => setPreviewImage(s.outImage)}>
+                                                <img src={s.outImage} className="max-h-32 rounded-lg object-contain cursor-pointer shadow-sm border border-slate-100 dark:border-github-dark-border" />
                                             </div>
                                         )}
                                     </div>
@@ -1682,19 +1825,18 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                             </div>
                         ))
                     ) : (
-                        <div className="py-12 bg-white dark:bg-dark-card rounded-lg border-2 border-dashed border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-slate-300">
-                            <Activity size={32} className="mb-2 opacity-20" />
-                            <p className="text-sm font-bold opacity-50">No activity logged</p>
+                        <div className="py-10 bg-white dark:bg-dark-card rounded-xl border border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center text-slate-400">
+                            <Activity size={28} className="mb-2 opacity-30" />
+                            <p className="text-xs font-semibold">No activity logged for this date</p>
                         </div>
                     )}
                 </div>
 
                 <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-all">
-                    <X size={24} />
+                    <X size={20} />
                 </button>
             </motion.div>
-        </motion.div>,
-        document.body
+        </motion.div>
     );
 };
 
@@ -1716,51 +1858,65 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
         }
     };
 
-    return createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] flex items-end">
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-lg" onClick={onClose} />
+    return (
+        <motion.div
+            key="request-detail-modal-root"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center"
+        >
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" onClick={onClose} />
             <motion.div
-                initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                className="relative w-full bg-white dark:bg-dark-card rounded-t-xl p-8 pb-12 shadow-2xl border-t border-slate-200 dark:border-github-dark-border"
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                className="relative w-full max-w-lg bg-white dark:bg-github-dark-subtle rounded-t-[2rem] sm:rounded-2xl p-6 pb-12 shadow-2xl border-t border-slate-200 dark:border-github-dark-border z-10 max-h-[90vh] overflow-y-auto"
             >
-                <div className="w-12 h-1 bg-slate-200 dark:bg-white/10 rounded-full mx-auto mb-8" />
+                <div className="w-12 h-1 bg-slate-200 dark:bg-white/10 rounded-full mx-auto mb-6" />
 
-                <div className="mb-8">
-                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-2 block">Correction Request</span>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">{request.user_name}</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{request.correction_type} • Request Date: {new Date(request.request_date).toLocaleDateString()}</p>
+                <div className="mb-6">
+                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-1 block">Correction Request</span>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white leading-tight">{request.user_name}</h3>
+                    <p className="text-[11px] font-medium text-slate-400 uppercase mt-1 tracking-wider">
+                        {request.correction_type} • Request Date: {formatHeaderDate(request.request_date)}
+                    </p>
                 </div>
 
-                <div className="space-y-6 mb-8">
-                    <div className="bg-slate-50 dark:bg-github-dark-subtle p-5 rounded-2xl space-y-4">
-                        <div className="flex items-center gap-3 text-slate-400">
-                            <FileText size={16} />
-                            <span className="text-[10px] font-black uppercase tracking-widest">Reason / Justification</span>
+                <div className="space-y-4 mb-6">
+                    <div className="bg-slate-50 dark:bg-github-dark-subtle/40 p-4 rounded-xl space-y-2 border border-slate-100 dark:border-github-dark-border">
+                        <div className="flex items-center gap-2 text-slate-400">
+                            <FileText size={14} />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Reason / Justification</span>
                         </div>
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 italic leading-relaxed">"{request.reason || 'No justification provided'}"</p>
+                        <p className="text-xs font-medium text-slate-700 dark:text-slate-300 italic leading-relaxed">
+                            "{request.reason || 'No justification provided'}"
+                        </p>
                     </div>
 
                     {request.status?.toUpperCase() === 'PENDING' ? (
-                        <div className="space-y-3">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Decision Comment</span>
+                        <div className="space-y-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Decision Comment</span>
                             <textarea
                                 value={comment}
                                 onChange={(e) => setComment(e.target.value)}
                                 placeholder="Add internal review comment..."
-                                className="w-full bg-slate-50 dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white"
+                                className="w-full bg-slate-50 dark:bg-github-dark-subtle/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-3 text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white"
                                 rows={3}
                             />
                         </div>
                     ) : (
-                        <div className="bg-indigo-50 dark:bg-indigo-500/10 p-5 rounded-2xl space-y-3">
+                        <div className="bg-indigo-50/50 dark:bg-indigo-500/10 p-4 rounded-xl space-y-2 border border-indigo-100 dark:border-indigo-500/20">
                             <div className="flex justify-between items-center">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Admin Decision</span>
-                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${request.status?.toUpperCase() === 'APPROVED' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
-                                    }`}>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Admin Decision</span>
+                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                    request.status?.toUpperCase() === 'APPROVED' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+                                }`}>
                                     {request.status}
                                 </span>
                             </div>
-                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                            <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
                                 {request.admin_comment || "No comment provided."}
                             </p>
                         </div>
@@ -1768,30 +1924,29 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
                 </div>
 
                 {request.status?.toUpperCase() === 'PENDING' && (
-                    <div className="flex gap-4">
+                    <div className="flex gap-3">
                         <button
                             onClick={() => handleAction('rejected')}
                             disabled={isProcessing}
-                            className="flex-1 py-4 bg-white dark:bg-github-dark-subtle border-2 border-rose-100 dark:border-rose-500/20 text-rose-500 font-black rounded-xl active:scale-95 transition-all shadow-sm disabled:opacity-50"
+                            className="flex-1 py-3 bg-white dark:bg-github-dark-subtle border-2 border-rose-200 dark:border-rose-500/30 text-rose-600 font-bold text-xs rounded-xl active:scale-95 transition-all shadow-sm disabled:opacity-50"
                         >
                             Reject
                         </button>
                         <button
                             onClick={() => handleAction('approved')}
                             disabled={isProcessing}
-                            className="flex-1 py-4 bg-emerald-500 text-white font-black rounded-xl active:scale-95 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                            className="flex-1 py-3 bg-emerald-500 text-white font-bold text-xs rounded-xl active:scale-95 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                         >
                             Approve
                         </button>
                     </div>
                 )}
 
-                <button onClick={onClose} className="absolute top-8 right-8 p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-all">
-                    <X size={24} />
+                <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-all">
+                    <X size={20} />
                 </button>
             </motion.div>
-        </motion.div>,
-        document.body
+        </motion.div>
     );
 };
 
@@ -1814,15 +1969,15 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
         return name.toLowerCase().includes(q) || role.toLowerCase().includes(q) || dept.toLowerCase().includes(q);
     });
 
-    return createPortal(
-        <>
+    return (
+        <div className="fixed inset-0 z-[9000] flex flex-col justify-end">
             {/* Backdrop */}
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={onClose}
-                className="fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-[9998]"
+                className="fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm"
             />
 
             {/* Bottom Sheet Drawer */}
@@ -1831,7 +1986,7 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed bottom-0 left-0 right-0 max-h-[85vh] bg-slate-50 dark:bg-dark-card border-t border-slate-200 dark:border-github-dark-border flex flex-col z-[9999] shadow-2xl rounded-t-2xl pb-6"
+                className="relative max-h-[85vh] bg-slate-50 dark:bg-dark-card border-t border-slate-200 dark:border-github-dark-border flex flex-col z-10 shadow-2xl rounded-t-2xl pb-6 w-full"
             >
                 {/* Drag Handle Visual */}
                 <div className="w-12 h-1 bg-slate-350 dark:bg-white/10 rounded-full mx-auto my-3 shrink-0" />
@@ -2043,7 +2198,7 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
                                                 </span>
                                             </div>
                                             { (selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage) ? (
-                                                <div className="flex justify-center w-full mt-2" onClick={() => setPreviewImage(selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage)}>
+                                                <div className="flex justify-center w-full mt-2" onClick={() => setPreviewImage(selectedUser.session.inImage ? selectedUser.session.inImage : selectedUser.session.outImage)}>
                                                     <img src={selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage} alt="Selfie" className="max-h-56 max-w-full w-auto block rounded-2xl shadow-md object-contain cursor-pointer active:scale-95 transition-transform" />
                                                 </div>
                                             ) : (
@@ -2068,8 +2223,7 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
                     </AnimatePresence>
                 </div>
             </motion.div>
-        </>,
-        document.body
+        </div>
     );
 };
 

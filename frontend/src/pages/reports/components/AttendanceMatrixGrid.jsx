@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { User, Table } from 'lucide-react';
 import { getStatusColor, getStatusLabel, getStatusFullForm } from './reportsUtils';
 import { SummaryToggleIcon } from './SummaryToggleIcon';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const TOTAL_SUMMARY_COLUMNS = [
     { key: 'present', label: 'P', fullLabel: 'Present', width: 48, textCol: 'text-emerald-700 dark:text-emerald-400', bgCol: 'bg-emerald-50 dark:bg-[#064e3b]', getValue: (emp) => emp.stats?.present || 0 },
@@ -131,7 +132,7 @@ const AttendanceMatrixGrid = ({
                         {/* 2. Scrollable Middle: Calendar Date Columns */}
                         {matrixData.dates.map(rawDate => {
                             const d = new Date(rawDate + 'T00:00:00Z');
-                            const fullDateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+                            const fullDateStr = formatPlatformDate(rawDate);
                             return (
                                 <th key={rawDate} className="py-2 px-1 text-center min-w-[52px]" title={fullDateStr}>
                                     <div className="text-[9px] uppercase text-slate-400 font-normal leading-none tracking-wider">{d.toLocaleString('en-US', { month: 'short' })}</div>

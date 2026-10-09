@@ -9,7 +9,7 @@ import {
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import MonthPicker from '../../../components/MonthPicker';
 import DatePicker from '../../../components/DatePicker';
-import { formatLocalTimeString } from '../../../utils/dateUtils';
+import { formatLocalTimeString, formatPlatformDate } from '../../../utils/dateUtils';
 
 const AttendanceAnalyticsTab = ({
     analyticsFilterType,
@@ -213,12 +213,7 @@ const AttendanceAnalyticsTab = ({
                                                     if (session) {
                                                         const dateStr = session.check_in || session.time_in;
                                                         if (dateStr) {
-                                                            return new Date(dateStr).toLocaleDateString('en-US', {
-                                                                weekday: 'long',
-                                                                year: 'numeric',
-                                                                month: 'short',
-                                                                day: 'numeric'
-                                                            });
+                                                            return formatPlatformDate(dateStr);
                                                         }
                                                     }
                                                     return context[0].label;

@@ -1476,8 +1476,10 @@ export default function VisualCorrectionTimeline({
     const isSummaryOverride = (requestData?.correction_type || '').toLowerCase() === 'summary';
     const isAbsent = originalPunches.length === 0;
 
-    const shiftStartMins = shift?.start_time ? parseMinutes(shift.start_time) : null;
-    const shiftEndMins = shift?.end_time ? parseMinutes(shift.end_time) : null;
+    const shiftStartTimeStr = shift?.start_time || shift?.startTime || null;
+    const shiftEndTimeStr = shift?.end_time || shift?.endTime || null;
+    const shiftStartMins = shiftStartTimeStr ? parseMinutes(shiftStartTimeStr) : null;
+    const shiftEndMins = shiftEndTimeStr ? parseMinutes(shiftEndTimeStr) : null;
     const shiftLeft = (shiftStartMins !== null && shiftEndMins !== null) ? getPosPercent(shiftStartMins) : null;
     const shiftWidth = (shiftLeft !== null && shiftEndMins !== null) ? Math.max(2, getPosPercent(shiftEndMins) - shiftLeft) : null;
 
@@ -1495,9 +1497,9 @@ export default function VisualCorrectionTimeline({
                         <span className="text-[11px] font-normal text-slate-400">
                             {isAbsent ? 'No punches logged' : `(${originalPunches.length} punch${originalPunches.length > 1 ? 'es' : ''})`}
                         </span>
-                        {shift?.start_time && shift?.end_time && (
+                        {shiftStartTimeStr && shiftEndTimeStr && (
                             <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-                                Shift: {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                                Shift: {shiftStartTimeStr.slice(0, 5)} - {shiftEndTimeStr.slice(0, 5)}
                             </span>
                         )}
                     </div>
@@ -1528,7 +1530,7 @@ export default function VisualCorrectionTimeline({
                                 <div
                                     style={{ left: `${shiftLeft}%`, width: `${shiftWidth}%` }}
                                     className="absolute inset-y-1 bg-indigo-50/50 dark:bg-indigo-950/20 border-x border-indigo-200/40 dark:border-indigo-800/30 rounded-xs pointer-events-none"
-                                    title={`Scheduled Shift: ${shift?.start_time ? shift.start_time.slice(0, 5) : '09:00'} - ${shift?.end_time ? shift.end_time.slice(0, 5) : '18:00'}`}
+                                    title={`Scheduled Shift: ${shiftStartTimeStr ? shiftStartTimeStr.slice(0, 5) : '09:00'} - ${shiftEndTimeStr ? shiftEndTimeStr.slice(0, 5) : '18:00'}`}
                                 />
                             )}
 
@@ -1756,7 +1758,7 @@ export default function VisualCorrectionTimeline({
                                     <div
                                         style={{ left: `${shiftLeft}%`, width: `${shiftWidth}%` }}
                                         className="absolute inset-y-1 bg-indigo-50/50 dark:bg-indigo-950/20 border-x border-indigo-200/40 dark:border-indigo-800/30 rounded-xs pointer-events-none"
-                                        title={`Scheduled Shift: ${shift?.start_time ? shift.start_time.slice(0, 5) : '09:00'} - ${shift?.end_time ? shift.end_time.slice(0, 5) : '18:00'}`}
+                                        title={`Scheduled Shift: ${shiftStartTimeStr ? shiftStartTimeStr.slice(0, 5) : '09:00'} - ${shiftEndTimeStr ? shiftEndTimeStr.slice(0, 5) : '18:00'}`}
                                     />
                                 )}
 
@@ -1936,7 +1938,7 @@ export default function VisualCorrectionTimeline({
                                 <div
                                     style={{ left: `${shiftLeft}%`, width: `${shiftWidth}%` }}
                                     className="absolute inset-y-1 bg-indigo-50/50 dark:bg-indigo-950/20 border-x border-indigo-200/40 dark:border-indigo-800/30 rounded-xs pointer-events-none"
-                                    title={`Scheduled Shift: ${shift?.start_time ? shift.start_time.slice(0, 5) : '09:00'} - ${shift?.end_time ? shift.end_time.slice(0, 5) : '18:00'}`}
+                                    title={`Scheduled Shift: ${shiftStartTimeStr ? shiftStartTimeStr.slice(0, 5) : '09:00'} - ${shiftEndTimeStr ? shiftEndTimeStr.slice(0, 5) : '18:00'}`}
                                 />
                             )}
 
