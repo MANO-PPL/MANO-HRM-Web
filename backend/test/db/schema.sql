@@ -377,7 +377,14 @@ CREATE TABLE `core_organizations` (
   `city` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`org_id`),
   UNIQUE KEY `uq_core_organizations_org_code` (`org_code`),
-www  `device_id` varchar(128) NOT NULL DEFAULT '',
+  KEY `idx_core_organizations_deletion_requested_by` (`deletion_requested_by`),
+  CONSTRAINT `fk_core_organizations_super_admins_deletion_requested_by` FOREIGN KEY (`deletion_requested_by`) REFERENCES `core_super_admins` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `sessions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `token_hash` varchar(64) NOT NULL,
+  `device_id` varchar(128) NOT NULL DEFAULT '',
   `device_name` varchar(255) DEFAULT NULL,
   `device_type` varchar(50) NOT NULL DEFAULT 'desktop',
   `os` varchar(100) DEFAULT NULL,
