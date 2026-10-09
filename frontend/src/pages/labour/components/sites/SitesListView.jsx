@@ -1,5 +1,6 @@
 import React from 'react';
 import { Building, Users, Edit2, Trash2 } from 'lucide-react';
+import { formatPlatformDate } from '../../../../utils/dateUtils';
 
 const SitesListView = ({
     sites,
@@ -75,7 +76,7 @@ const SitesListView = ({
                                                 </span>
                                             </td>
                                             <td className="p-3 text-slate-400 dark:text-[#8b949e]">
-                                                {new Date(site.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                {formatPlatformDate(site.created_at)}
                                             </td>
                                             <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex justify-end gap-1.5">

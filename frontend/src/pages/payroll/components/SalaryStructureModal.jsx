@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Printer, X, Eye, Building2, RefreshCw, CheckCircle2, ShieldCheck, Layers } from 'lucide-react';
 import payrollService from '../../../services/payrollService';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const formatINR = (val) => Number(val || 0).toLocaleString('en-IN', {
     minimumFractionDigits: 2,
@@ -11,12 +12,7 @@ const formatINR = (val) => Number(val || 0).toLocaleString('en-IN', {
 
 const formatDateDMY = (dateStr) => {
     if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return '—';
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
+    return formatPlatformDate(dateStr);
 };
 
 const SalaryStructureModal = ({

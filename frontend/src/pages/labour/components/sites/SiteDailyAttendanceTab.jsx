@@ -5,6 +5,7 @@ import {
     Save, Loader2, CheckCircle, XCircle, RotateCcw, CheckSquare, Check
 } from 'lucide-react';
 import LoadingScreen from '../../../../components/LoadingScreen';
+import { formatPlatformDate } from '../../../../utils/dateUtils';
 
 /* ─── Overtime Input (type + keyboard shortcuts) ───────────────────────────── */
 const OvertimeInput = ({ value = 0, onChange, max = 12, compact = false }) => {
@@ -173,7 +174,7 @@ const SiteDailyAttendanceTab = ({
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-3.5 rounded-xl text-amber-700 dark:text-amber-400 font-semibold text-xs flex items-center gap-2 shadow-sm">
                     <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
                     <span>
-                        This site was marked completed on <strong>{new Date(selectedSite.end_date).toLocaleDateString()}</strong>. Attendance is restricted to dates strictly before completion.
+                        This site was marked completed on <strong>{formatPlatformDate(selectedSite.end_date)}</strong>. Attendance is restricted to dates strictly before completion.
                     </span>
                 </div>
             )}

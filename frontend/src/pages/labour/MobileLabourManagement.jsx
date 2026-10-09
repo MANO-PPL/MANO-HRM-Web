@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { labourService } from '../../services/labourService';
@@ -6,85 +6,183 @@ import { toast } from 'react-toastify';
 import {
     Building, Calendar, DollarSign, Clock, Plus, Search,
     UserPlus, Edit2, Trash2, Save, AlertTriangle, User, Phone, X,
-    CheckCircle, XCircle, Upload, ChevronRight, Loader2
+    CheckCircle, CheckCircle2, XCircle, Upload, ChevronRight, ChevronLeft,
+    Loader2, ArrowLeft, ArrowRight, HardHat, Wrench, Users, Wallet,
+    Filter, FileSpreadsheet, Download, RefreshCw, Undo2, Check, Minus,
+    Tag, History, Layers, Eye, CheckSquare, Sparkles, Building2,
+    CalendarCheck, UserCheck, ArrowUpRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MinimalSelect from '../../components/MinimalSelect';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import LoadingScreen from '../../components/LoadingScreen';
-import MonthlyDetailedMatrix from './components/MonthlyDetailedMatrix';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
-const getStatusColor = (status) => {
-    const s = status || '';
-    if (!s || s === '-') return 'bg-slate-50 text-slate-400 dark:bg-[#161b22] dark:text-[#8b949e] border border-slate-200 dark:border-[#30363d]';
-    if (s === 'Present' || s.includes('Present')) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-300 dark:ring-emerald-700/60 font-semibold';
-    if (s === 'Absent') return 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-700/60 font-semibold';
-    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 ring-1 ring-orange-300 dark:ring-orange-700/60 font-semibold';
-    if (s.toLowerCase().includes('late')) return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 ring-1 ring-amber-300 dark:ring-amber-700/60 font-semibold';
-    if (s.toLowerCase().includes('overtime')) return 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 ring-1 ring-purple-300 dark:ring-purple-700/60 font-semibold';
-    if (s === 'Sun' || s === 'Sat' || s === 'SU' || s === 'SA' || s === 'Sunday' || s === 'Saturday') return 'bg-slate-100 dark:bg-[#21262d] text-slate-500 dark:text-[#c9d1d9] font-medium border border-transparent dark:border-[#30363d]/60';
-    if (s.toLowerCase() === 'on leave' || s.toLowerCase() === 'paid leave') return 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 ring-1 ring-sky-300 dark:ring-sky-700/60 font-semibold';
-    if (s.toLowerCase() === 'half day') return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-300 dark:ring-indigo-700/60 font-semibold';
-    return 'bg-slate-100 text-slate-500 dark:bg-[#21262d] dark:text-[#c9d1d9]';
+// ============================================================================
+// DESIGN SYSTEM TOKENS & BADGE HELPERS (MATCHING FLUTTER REFERENCE)
+// ============================================================================
+
+const getSkillColor = (skillName) => {
+    const s = (skillName || '').toLowerCase().trim();
+    switch (s) {
+        case 'mason':
+            return { color: '#6366F1', bg: 'rgba(99, 102, 241, 0.12)', border: 'rgba(99, 102, 241, 0.35)' };
+        case 'electrician':
+            return { color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.12)', border: 'rgba(6, 182, 212, 0.35)' };
+        case 'carpenter':
+            return { color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.35)' };
+        case 'plumber':
+            return { color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.35)' };
+        case 'welder':
+            return { color: '#14B8A6', bg: 'rgba(20, 184, 166, 0.12)', border: 'rgba(20, 184, 166, 0.35)' };
+        case 'painter':
+            return { color: '#EC4899', bg: 'rgba(236, 72, 153, 0.12)', border: 'rgba(236, 72, 153, 0.35)' };
+        case 'foreman':
+        case 'supervisor':
+            return { color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.35)' };
+        case 'bar bender':
+        case 'tile layer':
+            return { color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)', border: 'rgba(139, 92, 246, 0.35)' };
+        case 'helper':
+        default:
+            return { color: '#64748B', bg: 'rgba(100, 116, 139, 0.12)', border: 'rgba(100, 116, 139, 0.35)' };
+    }
 };
 
-const getStatusLabel = (status) => {
-    const s = status || '';
-    if (!s || s === '-') return '·';
-    if (s === 'Present') return 'P';
-    if (s === 'Absent') return 'A';
-    if (s === 'Sun' || s === 'SU' || s === 'Sunday') return 'Su';
-    if (s === 'Sat' || s === 'SA' || s === 'Saturday') return 'Sa';
-    if (s.toLowerCase() === 'on leave') return 'L';
-    if (s.toLowerCase() === 'paid leave') return 'PL';
-    if (s.toLowerCase() === 'half day') return 'HD';
-    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'LO';
-    if (s.toLowerCase().includes('late')) return 'Lt';
-    if (s.toLowerCase().includes('overtime')) return 'OT';
-    return s.slice(0, 2);
+const SkillBadge = ({ skill }) => {
+    const { color, bg, border } = getSkillColor(skill);
+    return (
+        <span
+            className="px-2 py-0.5 rounded text-[9.5px] font-semibold uppercase tracking-wider inline-block"
+            style={{ color, backgroundColor: bg, border: `1px solid ${border}` }}
+        >
+            {skill || 'HELPER'}
+        </span>
+    );
 };
+
+const SiteStatusBadge = ({ status }) => {
+    const s = (status || '').toLowerCase();
+    let color = '#10B981';
+    let bg = 'rgba(16, 185, 129, 0.12)';
+    let border = 'rgba(16, 185, 129, 0.3)';
+    let label = 'ACTIVE';
+
+    if (s === 'completed') {
+        color = '#3B82F6';
+        bg = 'rgba(59, 130, 246, 0.12)';
+        border = 'rgba(59, 130, 246, 0.3)';
+        label = 'COMPLETED';
+    } else if (s === 'on hold' || s === 'inactive') {
+        color = '#F59E0B';
+        bg = 'rgba(245, 158, 11, 0.12)';
+        border = 'rgba(245, 158, 11, 0.3)';
+        label = s === 'inactive' ? 'INACTIVE' : 'ON HOLD';
+    }
+
+    return (
+        <span
+            className="px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider inline-flex items-center gap-1.5 shrink-0"
+            style={{ color, backgroundColor: bg, border: `1px solid ${border}` }}
+        >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+            <span>{label}</span>
+        </span>
+    );
+};
+
+const LabourStatCard = ({ title, value, icon: Icon, iconColor, subtitle }) => {
+    return (
+        <div className="p-3 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs flex items-center gap-2.5">
+            <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${iconColor}1f` }}
+            >
+                <Icon size={16} style={{ color: iconColor }} />
+            </div>
+            <div className="min-w-0 flex-1">
+                <span className="block text-[9px] font-semibold text-slate-500 dark:text-[#8B949E] uppercase tracking-wider truncate">
+                    {title}
+                </span>
+                <span className="block text-sm font-bold text-slate-900 dark:text-white truncate">
+                    {value}
+                </span>
+                {subtitle && (
+                    <span className="block text-[8.5px] text-slate-400 dark:text-[#6E7681] truncate">
+                        {subtitle}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ============================================================================
+// MAIN COMPONENT: MOBILE LABOUR MANAGEMENT
+// ============================================================================
 
 const MobileLabourManagement = () => {
-    // Navigation / Tab state
-    const [activeTab, setActiveTab] = useState('sites'); // 'sites', 'directory'
+    // ------------------------------------------------------------------------
+    // TOP NAVIGATION & DRILL-DOWN STATES
+    // ------------------------------------------------------------------------
+    // 'sites' (Sites Overview / Drill-down) or 'directory' (Worker Directory)
+    const [activeTab, setActiveTab] = useState('sites');
+    // Selected site for drill-down (null = Site Directory view, object = Site Dashboard)
     const [selectedSite, setSelectedSite] = useState(null);
-    const [subTab, setSubTab] = useState('attendance'); // 'attendance', 'finances'
-    const [ledgerViewMode, setLedgerViewMode] = useState('matrix'); // 'matrix' (Spreadsheet Matrix) or 'summary' (Summary Cards/Table)
+    // Sub-tab inside Site Dashboard: 'attendance' | 'grid' | 'finances'
+    const [subTab, setSubTab] = useState('attendance');
+    // Monthly Grid View Mode: false = Mobile Cards, true = Full Spreadsheet Table
+    const [isGridTableMode, setIsGridTableMode] = useState(false);
 
-    // Fallback if subTab is set to legacy 'grid'
-    useEffect(() => {
-        if (subTab === 'grid') {
-            setSubTab('attendance');
-        }
-    }, [subTab]);
-
-    // Data States
+    // ------------------------------------------------------------------------
+    // DATA STATES (MATCHING FLUTTER MODELS)
+    // ------------------------------------------------------------------------
     const [sites, setSites] = useState([]);
     const [labours, setLabours] = useState([]);
-    const [financeSummary, setFinanceSummary] = useState([]);
-    const [monthDetails, setMonthDetails] = useState(null);
-    const [loading, setLoading] = useState(false);
-
-    // Filter/Search States
-    const [labourSearch, setLabourSearch] = useState('');
-    const [labourSiteFilter, setLabourSiteFilter] = useState('All');
-
-    // Attendance States
-    const [attendanceSiteId, setAttendanceSiteId] = useState('');
-    const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
     const [attendanceRoster, setAttendanceRoster] = useState([]);
-    const [attendanceLoading, setAttendanceLoading] = useState(false);
+    const [gridData, setGridData] = useState([]);
+    const [financeSummary, setFinanceSummary] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    // Unsaved Changes Tracking & Batch Selection
+    const [selectedRosterIds, setSelectedRosterIds] = useState(new Set());
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [savingRoster, setSavingRoster] = useState(false);
 
-    // Monthly Grid States
-    const [gridSiteId, setGridSiteId] = useState('');
-    const [gridMonth, setGridMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-    const [gridData, setGridData] = useState([]);
-    const [gridLoading, setGridLoading] = useState(false);
-    const [gridMonthDetails, setGridMonthDetails] = useState(null);
+    // ------------------------------------------------------------------------
+    // FILTERS & LOCAL SEARCH STATES
+    // ------------------------------------------------------------------------
+    // Sites Overview filters
+    const [siteSearch, setSiteSearch] = useState('');
+    const [siteStatusFilter, setSiteStatusFilter] = useState('All'); // 'All' | 'Active' | 'Completed' | 'On Hold'
 
-    // Modal Control States
+    // Attendance Tab filters & dates
+    const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+    const [attendanceSearch, setAttendanceSearch] = useState('');
+    const [attendanceRoleFilter, setAttendanceRoleFilter] = useState('All');
+    const [attendanceStatusFilter, setAttendanceStatusFilter] = useState('All'); // 'All' | 'Present' | 'Half Day' | 'Absent' | 'Paid Leave' | 'Unmarked'
+    const [showAttendanceSearch, setShowAttendanceSearch] = useState(false);
+    const [attendanceLoading, setAttendanceLoading] = useState(false);
+
+    // Monthly Grid filters & dates
+    const [gridMonth, setGridMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [gridRoleFilter, setGridRoleFilter] = useState('All');
+    const [gridLoading, setGridLoading] = useState(false);
+
+    // Finances filters & dates
+    const [financeMonth, setFinanceMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [financeRoleFilter, setFinanceRoleFilter] = useState('All');
+    const [financeLoading, setFinanceLoading] = useState(false);
+
+    // Worker Directory filters
+    const [directorySearch, setDirectorySearch] = useState('');
+    const [directorySiteFilter, setDirectorySiteFilter] = useState('All'); // 'All' | 'Unassigned' | site_id
+    const [directoryRoleFilter, setDirectoryRoleFilter] = useState('All');
+
+    // ------------------------------------------------------------------------
+    // MODAL DIALOG / BOTTOM-SHEET STATES
+    // ------------------------------------------------------------------------
     const [showSiteModal, setShowSiteModal] = useState(false);
     const [editingSite, setEditingSite] = useState(null);
     const [siteForm, setSiteForm] = useState({ site_name: '', location_details: '', status: 'Active' });
@@ -94,570 +192,188 @@ const MobileLabourManagement = () => {
     const [labourForm, setLabourForm] = useState({
         name: '', phone: '', sex: 'Male', role: '',
         wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
-        overtime_pay_per_hour: '0'
+        overtime_pay_per_hour: '0', status: 'Active'
     });
-
-    const [showAdvanceModal, setShowAdvanceModal] = useState(false);
-    const [advanceForm, setAdvanceForm] = useState({ labour_id: '', site_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
-    const [advanceHistory, setAdvanceHistory] = useState([]);
-    const [advancePayouts, setAdvancePayouts] = useState([]);
-    const [advanceHistoryLoading, setAdvanceHistoryLoading] = useState(false);
-    const [advanceHistoryView, setAdvanceHistoryView] = useState('month'); // 'month' | 'all'
-    const [advanceHistoryMonth, setAdvanceHistoryMonth] = useState(new Date().toISOString().slice(0, 7));
-
-    // Phase 2 States
-    const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
-    const [bulkSourceSiteId, setBulkSourceSiteId] = useState('All');
-    const [bulkDestinationSiteId, setBulkDestinationSiteId] = useState('');
-    const [selectedLabourIds, setSelectedLabourIds] = useState([]);
 
     const [showBorrowModal, setShowBorrowModal] = useState(false);
     const [borrowSearchQuery, setBorrowSearchQuery] = useState('');
 
-    const [selectedHistoryLabour, setSelectedHistoryLabour] = useState(null);
-    const [selectedHistoryLabourDetails, setSelectedHistoryLabourDetails] = useState(null);
-    const [labourHistoryData, setLabourHistoryData] = useState([]);
-    const [historyLoading, setHistoryLoading] = useState(false);
+    const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
+    const [bulkSourceSiteId, setBulkSourceSiteId] = useState('All');
+    const [bulkDestinationSiteId, setBulkDestinationSiteId] = useState('');
+    const [selectedTransferLabourIds, setSelectedTransferLabourIds] = useState([]);
+
+    const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+    const [advanceForm, setAdvanceForm] = useState({
+        labour_id: '', site_id: '', name: '', amount: '',
+        date: new Date().toISOString().split('T')[0], notes: '',
+        accrued_credit: 0, net_payable: 0
+    });
+    const [advanceHistory, setAdvanceHistory] = useState([]);
+    const [advancePayouts, setAdvancePayouts] = useState([]);
+    const [advanceHistoryLoading, setAdvanceHistoryLoading] = useState(false);
+    const [advanceHistoryView, setAdvanceHistoryView] = useState('month'); // 'month' | 'all'
 
     const [showPayoutModal, setShowPayoutModal] = useState(false);
-    const [historyTab, setHistoryTab] = useState('sites'); // 'sites', 'payouts'
-    const [labourPayoutHistory, setLabourPayoutHistory] = useState([]);
     const [payoutForm, setPayoutForm] = useState({
-        payout_id: null, labour_id: '', site_id: '', name: '', month: '', wage_type: '', monthly_salary: '',
-        present_days: 0, half_days: 0, absent_days: 0, paid_leaves: 0,
-        accrued_credit: 0, advances_taken: 0, net_payable: 0, paid_amount: '',
-        status: 'Paid', payment_date: new Date().toISOString().split('T')[0], notes: ''
+        payout_id: null, labour_id: '', site_id: '', name: '', month: '',
+        wage_type: 'Daily Wage', monthly_salary: '', present_days: 0,
+        half_days: 0, absent_days: 0, paid_leaves: 0, accrued_credit: 0,
+        advances_taken: 0, net_payable: 0, paid_amount: '', status: 'Paid',
+        payment_date: new Date().toISOString().split('T')[0], notes: ''
     });
 
-    // Daily Schedule Planner States
     const [showScheduleModal, setShowScheduleModal] = useState(false);
     const [selectedScheduleLabour, setSelectedScheduleLabour] = useState(null);
     const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
     const [scheduleSites, setScheduleSites] = useState([]);
     const [scheduleLoading, setScheduleLoading] = useState(false);
 
-    const [financeMonth, setFinanceMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-    const [financeRoleFilter, setFinanceRoleFilter] = useState('');
-    const [gridRoleFilter, setGridRoleFilter] = useState('');
-    const [labourRoleFilter, setLabourRoleFilter] = useState('');
-    const [attendanceRoleFilter, setAttendanceRoleFilter] = useState('');
+    const [selectedHistoryLabour, setSelectedHistoryLabour] = useState(null);
+    const [selectedHistoryLabourDetails, setSelectedHistoryLabourDetails] = useState(null);
+    const [labourHistoryData, setLabourHistoryData] = useState([]);
+    const [labourPayoutHistory, setLabourPayoutHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyTab, setHistoryTab] = useState('sites'); // 'sites' | 'payouts' | 'wages'
 
-    const [showSiteClosurePrompt, setShowSiteClosurePrompt] = useState(false);
-    const [closureSiteId, setClosureSiteId] = useState('');
-    const [closureSiteName, setClosureSiteName] = useState('');
-    const [closureDestinationSiteId, setClosureDestinationSiteId] = useState('');
-    const [closureLabours, setClosureLabours] = useState([]);
-    const [siteStatusToSave, setSiteStatusToSave] = useState('');
-    const [siteFormToSave, setSiteFormToSave] = useState(null);
+    // Wage Revision Modal
+    const [wageRevisionWorker, setWageRevisionWorker] = useState(null);
+    const [wageRevisionList, setWageRevisionList] = useState([]);
+    const [wageRevisionLoading, setWageRevisionLoading] = useState(false);
+    const [showAddRevisionForm, setShowAddRevisionForm] = useState(false);
+    const [newRevisionForm, setNewRevisionForm] = useState({
+        effective_date: new Date().toISOString().split('T')[0],
+        daily_rate: '',
+        overtime_pay_per_hour: '',
+        notes: ''
+    });
 
-    // Bulk upload states
     const [showBulkLabourModal, setShowBulkLabourModal] = useState(false);
     const [parsedLabours, setParsedLabours] = useState([]);
-    const [csvPreviewError, setCsvPreviewError] = useState('');
     const [isUploadingBulk, setIsUploadingBulk] = useState(false);
 
-    // Custom Confirmation Dialog State
+    // Custom Generic Confirmation Dialog
     const [confirmDialog, setConfirmDialog] = useState({
         isOpen: false,
         title: '',
         message: '',
+        confirmText: 'Confirm',
+        isDestructive: false,
         onConfirm: null
     });
 
-    // ==========================================
+    // ------------------------------------------------------------------------
     // DATA FETCHING HANDLERS
-    // ==========================================
-
-    const fetchSites = async () => {
+    // ------------------------------------------------------------------------
+    const loadInitialData = async () => {
+        setLoading(true);
         try {
-            const data = await labourService.getAllSites();
-            setSites(data);
+            const [sitesData, laboursData] = await Promise.all([
+                labourService.getAllSites(),
+                labourService.getAllLabours()
+            ]);
+            setSites(sitesData || []);
+            setLabours(laboursData || []);
         } catch (err) {
-            toast.error(err.message || 'Failed to fetch sites');
-        }
-    };
-
-    const fetchLabours = async () => {
-        try {
-            const data = await labourService.getAllLabours();
-            setLabours(data);
-        } catch (err) {
-            toast.error(err.message || 'Failed to fetch labours');
-        }
-    };
-
-    const fetchFinances = async (m = financeMonth) => {
-        if (!selectedSite) return;
-        try {
-            const res = await labourService.getFinancesSummary(selectedSite.site_id, m);
-            setFinanceSummary(res.summary || []);
-            setMonthDetails(res.monthDetails || null);
-        } catch (err) {
-            toast.error(err.message || 'Failed to fetch financial details');
-        }
-    };
-
-    const fetchGridData = async () => {
-        if (!gridSiteId || !gridMonth) return;
-        setGridLoading(true);
-        try {
-            const res = await labourService.getMonthlyGridAttendance(gridSiteId, gridMonth, false);
-            setGridData(res.grid || []);
-            setGridMonthDetails(res.monthDetails || null);
-        } catch (err) {
-            toast.error(err.message || 'Failed to fetch monthly grid data');
-            setGridData([]);
-        }
-        setGridLoading(false);
-    };
-
-    const loadAttendanceRoster = async () => {
-        if (!attendanceSiteId || !attendanceDate) return;
-        setAttendanceLoading(true);
-        try {
-            const res = await labourService.getSiteAttendance(attendanceSiteId, attendanceDate);
-            setAttendanceRoster(res.roster || []);
-        } catch (err) {
-            toast.error(err.message || 'Failed to fetch roster');
-            setAttendanceRoster([]);
-        }
-        setAttendanceLoading(false);
-    };
-
-    // Load initial sites and labours
-    useEffect(() => {
-        const loadInitial = async () => {
-            setLoading(true);
-            await fetchSites();
-            await fetchLabours();
+            toast.error(err.message || 'Failed to load labour management data');
+        } finally {
             setLoading(false);
-        };
-        loadInitial();
+        }
+    };
+
+    useEffect(() => {
+        loadInitialData();
     }, []);
 
-    // Sync site select ids when selectedSite changes
+    const loadAttendanceRoster = async () => {
+        if (!selectedSite) return;
+        setAttendanceLoading(true);
+        try {
+            const res = await labourService.getSiteAttendance(selectedSite.site_id, attendanceDate);
+            setAttendanceRoster(res.roster || []);
+            setSelectedRosterIds(new Set());
+            setHasUnsavedChanges(false);
+        } catch (err) {
+            toast.error(err.message || 'Failed to fetch attendance roster');
+            setAttendanceRoster([]);
+        } finally {
+            setAttendanceLoading(false);
+        }
+    };
+
+    const loadMonthlyGrid = async () => {
+        if (!selectedSite) return;
+        setGridLoading(true);
+        try {
+            const res = await labourService.getMonthlyGridAttendance(selectedSite.site_id, gridMonth, false);
+            setGridData(res.grid || []);
+        } catch (err) {
+            toast.error(err.message || 'Failed to fetch monthly grid');
+            setGridData([]);
+        } finally {
+            setGridLoading(false);
+        }
+    };
+
+    const loadFinances = async () => {
+        if (!selectedSite) return;
+        setFinanceLoading(true);
+        try {
+            const res = await labourService.getFinancesSummary(selectedSite.site_id, financeMonth);
+            setFinanceSummary(res.summary || []);
+        } catch (err) {
+            toast.error(err.message || 'Failed to fetch financial ledger');
+            setFinanceSummary([]);
+        } finally {
+            setFinanceLoading(false);
+        }
+    };
+
+    // Load data upon site selection or subtab switch
     useEffect(() => {
         if (selectedSite) {
-            setAttendanceSiteId(selectedSite.site_id.toString());
-            setGridSiteId(selectedSite.site_id.toString());
-        }
-    }, [selectedSite]);
-
-    const getMaxAttendanceDate = () => {
-        if (selectedSite && selectedSite.status === 'Completed' && selectedSite.end_date) {
-            const d = new Date(selectedSite.end_date);
-            d.setDate(d.getDate() - 1);
-            return d.toISOString().split('T')[0];
-        }
-        return undefined;
-    };
-
-    useEffect(() => {
-        if (selectedSite && selectedSite.status === 'Completed' && selectedSite.end_date) {
-            const maxD = getMaxAttendanceDate();
-            if (maxD && attendanceDate > maxD) {
-                setAttendanceDate(maxD);
-            }
-        }
-    }, [selectedSite, attendanceDate]);
-
-    // Handle nested data dependencies inside clicked site dashboard
-    useEffect(() => {
-        if (activeTab === 'sites' && selectedSite) {
             if (subTab === 'attendance') {
                 loadAttendanceRoster();
+            } else if (subTab === 'grid') {
+                loadMonthlyGrid();
             } else if (subTab === 'finances') {
-                fetchFinances(financeMonth);
+                loadFinances();
             }
         }
-    }, [attendanceSiteId, attendanceDate, financeMonth, activeTab, selectedSite, subTab]);
+    }, [selectedSite, subTab, attendanceDate, gridMonth, financeMonth]);
 
-    // Bulk upload CSV/Excel handlers for Mobile
-    const handleCSVUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append('file', file);
-        setIsUploadingBulk(true);
-        try {
-            const parsed = await labourService.parseBulkLabours(formData);
-            if (parsed.length === 0) {
-                toast.error("The file seems to be empty or invalid.");
-                return;
-            }
-            setParsedLabours(parsed);
-            setCsvPreviewError('');
-        } catch (err) {
-            toast.error(err.message || "Failed to parse file. Please check template format.");
-            setCsvPreviewError(err.message);
-        }
-        setIsUploadingBulk(false);
+    // ------------------------------------------------------------------------
+    // SITE SELECTION & NAVIGATION HANDLERS
+    // ------------------------------------------------------------------------
+    const handleSelectSite = (site) => {
+        setSelectedSite(site);
+        setSubTab('attendance');
+        setAttendanceStatusFilter('All');
+        setSelectedRosterIds(new Set());
+        setHasUnsavedChanges(false);
+        setGridMonth(attendanceDate.slice(0, 7));
+        setFinanceMonth(attendanceDate.slice(0, 7));
     };
 
-    const handleSaveBulkLabours = async () => {
-        const validLabours = parsedLabours.filter(l => l.isValid);
-        if (validLabours.length === 0) {
-            toast.error("No valid labour rows.");
-            return;
-        }
-        setIsUploadingBulk(true);
-        try {
-            await labourService.bulkCreateLabours(validLabours);
-            toast.success(`Successfully imported ${validLabours.length} workers.`);
-            setShowBulkLabourModal(false);
-            setParsedLabours([]);
-            await fetchLabours();
-        } catch (err) {
-            toast.error(err.message || "Failed to bulk create.");
-        }
-        setIsUploadingBulk(false);
+    const handleBackToSites = () => {
+        setSelectedSite(null);
+        setSelectedRosterIds(new Set());
+        setHasUnsavedChanges(false);
     };
 
-    const downloadCSVTemplate = async () => {
-        try {
-            const data = await labourService.downloadBulkTemplate();
-            const url = window.URL.createObjectURL(new Blob([data]));
-            const link = document.createElement("a");
-            link.href = url;
-            link.setAttribute("download", "labour_bulk_upload_template.xlsx");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        } catch (err) {
-            toast.error(err.message || "Failed to download template.");
-        }
-    };
-
-    const getDaysInMonthArray = () => {
-        if (!gridMonth) return [];
-        const [yr, mo] = gridMonth.split('-');
-        const year = Number(yr);
-        const monthNum = Number(mo);
-        const daysCount = new Date(year, monthNum, 0).getDate();
-
-        const arr = [];
-        for (let d = 1; d <= daysCount; d++) {
-            const dateObj = new Date(year, monthNum - 1, d);
-            const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3).toUpperCase();
-            arr.push({
-                dayNum: d,
-                dayName,
-                dateStr: `${year}-${String(monthNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-            });
-        }
-        return arr;
-    };
-
-    const getMonthNameAndYear = (startDateStr) => {
-        if (!startDateStr) return '';
-        const date = new Date(startDateStr);
-        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
-    };
-
-
-
-    // ==========================================
-    // SITE HANDLERS
-    // ==========================================
-
-    const handleSaveSite = async (e) => {
-        e.preventDefault();
-        try {
-            if (editingSite) {
-                // If status is changed from Active to Completed or Inactive, check for active labours
-                const statusChanged = editingSite.status === 'Active' && (siteForm.status === 'Completed' || siteForm.status === 'Inactive');
-                const siteLabours = statusChanged ? labours.filter(l => l.site_id === editingSite.site_id) : [];
-
-                if (statusChanged && siteLabours.length > 0) {
-                    setClosureSiteId(editingSite.site_id);
-                    setClosureSiteName(editingSite.site_name);
-                    setClosureLabours(siteLabours);
-                    setSiteStatusToSave(siteForm.status);
-                    setSiteFormToSave({ ...siteForm });
-                    setShowSiteModal(false);
-                    setClosureDestinationSiteId('');
-                    setShowSiteClosurePrompt(true);
-                    return;
-                }
-
-                await labourService.updateSite(editingSite.site_id, siteForm);
-                toast.success('Site updated');
-            } else {
-                await labourService.createSite(siteForm);
-                toast.success('Site created');
-            }
-            setShowSiteModal(false);
-            setEditingSite(null);
-            setSiteForm({ site_name: '', location_details: '', status: 'Active' });
-            fetchSites();
-        } catch (err) {
-            toast.error(err.message || 'Failed to save site');
-        }
-    };
-
-    const handleConfirmSiteClosure = async (e) => {
-        e.preventDefault();
-        try {
-            const labourIdsToTransfer = closureLabours.map(l => l.labour_id);
-            await labourService.bulkTransferLabours({
-                source_site_id: closureSiteId,
-                destination_site_id: closureDestinationSiteId ? Number(closureDestinationSiteId) : null,
-                labour_ids: labourIdsToTransfer
-            });
-
-            await labourService.updateSite(closureSiteId, siteFormToSave);
-            toast.success(`Site status updated. Transferred ${labourIdsToTransfer.length} workers.`);
-            setShowSiteClosurePrompt(false);
-            setEditingSite(null);
-            setSiteForm({ site_name: '', location_details: '', status: 'Active' });
-            fetchSites();
-            fetchLabours();
-        } catch (err) {
-            toast.error(err.message || 'Failed during site closure reassignment');
-        }
-    };
-
-    const handleExecuteBulkTransfer = async (e) => {
-        e.preventDefault();
-        if (selectedLabourIds.length === 0) {
-            toast.error('Select at least one worker to transfer');
-            return;
-        }
-        try {
-            await labourService.bulkTransferLabours({
-                source_site_id: bulkSourceSiteId === 'All' ? null : Number(bulkSourceSiteId),
-                destination_site_id: bulkDestinationSiteId === 'Unassigned' || !bulkDestinationSiteId ? null : Number(bulkDestinationSiteId),
-                labour_ids: selectedLabourIds
-            });
-            toast.success(`Transferred ${selectedLabourIds.length} workers.`);
-            setShowBulkTransferModal(false);
-            setSelectedLabourIds([]);
-            fetchLabours();
-        } catch (err) {
-            toast.error(err.message || 'Failed to transfer workers');
-        }
-    };
-
-    const handleViewHistory = async (lab) => {
-        setSelectedHistoryLabour(lab);
-        setHistoryTab('sites');
-        setHistoryLoading(true);
-        try {
-            const res = await labourService.getLabourWorkHistory(lab.labour_id);
-            setLabourHistoryData(res.history || []);
-            setLabourPayoutHistory(res.payouts || []);
-            setSelectedHistoryLabourDetails(res.labour || null);
-        } catch (err) {
-            toast.error(err.message || 'Failed to load history');
-        }
-        setHistoryLoading(false);
-    };
-
-    const handleBorrowLabour = (lab) => {
-        setAttendanceRoster(prev => [
-            ...prev,
-            {
-                labour_id: lab.labour_id,
-                name: lab.name,
-                role: lab.role,
-                wage_type: lab.wage_type,
-                status: '',
-                is_borrowed: true
-            }
-        ]);
-        setShowBorrowModal(false);
-        setBorrowSearchQuery('');
-        toast.success(`${lab.name} added to today's daily checklist`);
-    };
-
-    const handleEditSite = (site) => {
-        setEditingSite(site);
-        setSiteForm({
-            site_name: site.site_name,
-            location_details: site.location_details || '',
-            status: site.status
-        });
-        setShowSiteModal(true);
-    };
-
-    const handleDeleteSite = (siteId) => {
-        setConfirmDialog({
-            isOpen: true,
-            title: 'Delete Construction Site',
-            message: 'Are you sure you want to delete this site? Assigned workers will be unassigned.',
-            onConfirm: async () => {
-                try {
-                    await labourService.deleteSite(siteId);
-                    toast.success('Site deleted successfully');
-                    fetchSites();
-                } catch (err) {
-                    toast.error(err.message || 'Failed to delete site');
-                }
-            }
-        });
-    };
-
-    // ==========================================
-    // LABOUR HANDLERS
-    // ==========================================
-
-    const handleSaveLabour = async (e) => {
-        e.preventDefault();
-        try {
-            const cleanPhone = labourForm.phone ? labourForm.phone.trim().replace(/[\s\-()]/g, '') : '';
-            if (cleanPhone) {
-                const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
-                if (!phoneRegex.test(cleanPhone)) {
-                    toast.error('Please enter a valid 10-digit contact number (e.g. 9876543210)');
-                    return;
-                }
-            }
-
-            const payload = {
-                ...labourForm,
-                phone: cleanPhone || null,
-                wage_type: 'Daily Wage',
-                monthly_salary: Number(labourForm.monthly_salary),
-                allowed_leaves: 0,
-                site_id: labourForm.site_id ? Number(labourForm.site_id) : null,
-                overtime_pay_per_hour: Number(labourForm.overtime_pay_per_hour || 0)
-            };
-
-            if (editingLabour) {
-                await labourService.updateLabour(editingLabour.labour_id, payload);
-                toast.success('Worker updated');
-            } else {
-                await labourService.createLabour(payload);
-                toast.success('Worker added');
-            }
-            setShowLabourModal(false);
-            setEditingLabour(null);
-            setLabourForm({
-                name: '', phone: '', sex: 'Male', role: '',
-                wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
-                overtime_pay_per_hour: '0'
-            });
-            fetchLabours();
-        } catch (err) {
-            toast.error(err.message || 'Failed to save labour worker');
-        }
-    };
-
-    const handleEditLabour = (lab) => {
-        setEditingLabour(lab);
-        setLabourForm({
-            name: lab.name,
-            phone: lab.phone || '',
-            sex: lab.sex || 'Male',
-            role: lab.role,
-            wage_type: 'Daily Wage',
-            monthly_salary: lab.monthly_salary,
-            allowed_leaves: '0',
-            site_id: lab.site_id?.toString() || '',
-            overtime_pay_per_hour: lab.overtime_pay_per_hour?.toString() || '0'
-        });
-        setShowLabourModal(true);
-    };
-
-    const handleDeleteLabour = (labourId) => {
-        setConfirmDialog({
-            isOpen: true,
-            title: 'Delete Worker Profile',
-            message: 'Are you sure you want to delete this labour worker? All history and data will be permanently deleted.',
-            onConfirm: async () => {
-                try {
-                    await labourService.deleteLabour(labourId);
-                    toast.success('Worker deleted successfully');
-                    fetchLabours();
-                } catch (err) {
-                    toast.error(err.message || 'Failed to delete worker');
-                }
-            }
-        });
-    };
-
-    const fetchScheduleForLabour = async (labourId, date) => {
-        setScheduleLoading(true);
-        try {
-            const res = await labourService.getLabourSchedule(labourId, date);
-            setScheduleSites(res.site_ids || []);
-        } catch (err) {
-            toast.error(err.message || 'Failed to fetch schedule');
-            setScheduleSites([]);
-        }
-        setScheduleLoading(false);
-    };
-
-    const handleOpenScheduleModal = async (labour) => {
-        setSelectedScheduleLabour(labour);
-        const todayStr = new Date().toISOString().split('T')[0];
-        setScheduleDate(todayStr);
-        setShowScheduleModal(true);
-        await fetchScheduleForLabour(labour.labour_id, todayStr);
-    };
-
-    const handleScheduleDateChange = async (date) => {
-        setScheduleDate(date);
-        if (selectedScheduleLabour) {
-            await fetchScheduleForLabour(selectedScheduleLabour.labour_id, date);
-        }
-    };
-
-    const handleToggleScheduleSite = (siteId) => {
-        setScheduleSites(prev =>
-            prev.includes(siteId)
-                ? prev.filter(id => id !== siteId)
-                : [...prev, siteId]
-        );
-    };
-
-    const handleSaveSchedule = async () => {
-        if (!selectedScheduleLabour) return;
-        try {
-            await labourService.saveLabourSchedule({
-                labour_id: selectedScheduleLabour.labour_id,
-                date: scheduleDate,
-                site_ids: scheduleSites
-            });
-            toast.success(`Schedule updated for ${selectedScheduleLabour.name}`);
-            setShowScheduleModal(false);
-            fetchLabours();
-        } catch (err) {
-            toast.error(err.message || 'Failed to save daily schedule');
-        }
-    };
-
-    // ==========================================
-    // ATTENDANCE HANDLERS
-    // ==========================================
-
-    const handleStatusChange = (labourId, newStatus) => {
-        setAttendanceRoster(prev =>
-            prev.map(item => {
-                if (item.labour_id !== labourId) return item;
-                const updatedStatus = item.status === newStatus ? '' : newStatus;
-                return {
-                    ...item,
-                    status: updatedStatus,
-                    overtime_hours: updatedStatus === 'Present' ? (item.overtime_hours || 0) : 0
-                };
-            })
-        );
-    };
-
-    const handleOvertimeChange = (labourId, otHours) => {
-        setAttendanceRoster(prev =>
-            prev.map(item => item.labour_id === labourId ? { ...item, overtime_hours: otHours } : item)
-        );
-    };
-
+    // ------------------------------------------------------------------------
+    // ATTENDANCE SUB-TAB HANDLERS & BATCH ACTIONS
+    // ------------------------------------------------------------------------
     const handleSaveAttendance = async () => {
-        if (savingRoster) return;
+        if (!selectedSite || savingRoster) return;
         setSavingRoster(true);
         try {
-            await labourService.saveSiteAttendance(attendanceSiteId, attendanceDate, attendanceRoster);
-            toast.success('Daily attendance checklist saved!');
+            await labourService.saveSiteAttendance(selectedSite.site_id, attendanceDate, attendanceRoster);
+            toast.success('Attendance saved successfully!');
+            setHasUnsavedChanges(false);
+            setSelectedRosterIds(new Set());
+            await loadAttendanceRoster();
+            if (gridData.length > 0) loadMonthlyGrid();
         } catch (err) {
             toast.error(err.message || 'Failed to save attendance roster');
         } finally {
@@ -665,22 +381,296 @@ const MobileLabourManagement = () => {
         }
     };
 
-    // ==========================================
-    // FINANCES HANDLERS
-    // ==========================================
-
-    const formatAdvanceDate = (dateVal) => {
-        if (!dateVal) return '';
-        const dStr = typeof dateVal === 'string' ? dateVal.split('T')[0] : new Date(dateVal).toISOString().split('T')[0];
-        const [y, m, d] = dStr.split('-');
-        const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
-        const day = dateObj.getDate();
-        const suffix = ["th", "st", "nd", "rd"][(day % 10 > 3 || Math.floor((day % 100) / 10) === 1) ? 0 : day % 10];
-        const monthName = dateObj.toLocaleString('en-US', { month: 'short' });
-        return `${day}${suffix} ${monthName} ${y}`;
+    const toggleSelectRosterItem = (labourId) => {
+        setSelectedRosterIds(prev => {
+            const next = new Set(prev);
+            if (next.has(labourId)) next.delete(labourId);
+            else next.add(labourId);
+            return next;
+        });
     };
 
-    const loadAdvanceHistory = async (labourId, month = advanceHistoryMonth) => {
+    const toggleSelectAllVisible = (visibleRoster) => {
+        setSelectedRosterIds(prev => {
+            const visibleIds = visibleRoster.map(r => r.labour_id || r.labourId);
+            const allSelected = visibleIds.length > 0 && visibleIds.every(id => prev.has(id));
+            const next = new Set(prev);
+            if (allSelected) {
+                visibleIds.forEach(id => next.delete(id));
+            } else {
+                visibleIds.forEach(id => next.add(id));
+            }
+            return next;
+        });
+    };
+
+    const setItemStatus = (labourId, newStatus) => {
+        const item = attendanceRoster.find(r => (r.labour_id || r.labourId) === labourId);
+        const isConflict = (newStatus === 'Present' || newStatus === 'Half Day' || newStatus === 'Paid Leave') &&
+            item?.already_marked_at && !item?.is_scheduled_multi_site;
+
+        if (isConflict) {
+            toast.error(`Worker is already marked ${item.already_marked_at.status} at ${item.already_marked_at.site_name}.`);
+            return;
+        }
+
+        setAttendanceRoster(prev =>
+            prev.map(r => {
+                const id = r.labour_id || r.labourId;
+                if (id !== labourId) return r;
+                const nextStatus = r.status === newStatus ? '' : newStatus;
+                return {
+                    ...r,
+                    status: nextStatus,
+                    overtime_hours: nextStatus === 'Present' ? (r.overtime_hours || 0) : 0
+                };
+            })
+        );
+        setHasUnsavedChanges(true);
+    };
+
+    const setItemOvertime = (labourId, otHours) => {
+        const clamped = Math.max(0, Math.min(12, Number(otHours || 0)));
+        setAttendanceRoster(prev =>
+            prev.map(r => (r.labour_id || r.labourId) === labourId ? { ...r, overtime_hours: clamped } : r)
+        );
+        setHasUnsavedChanges(true);
+    };
+
+    const batchSetStatus = (status) => {
+        if (selectedRosterIds.size === 0) return;
+        let count = 0;
+        setAttendanceRoster(prev =>
+            prev.map(r => {
+                const id = r.labour_id || r.labourId;
+                if (!selectedRosterIds.has(id)) return r;
+
+                const isConflict = (status === 'Present' || status === 'Half Day' || status === 'Paid Leave') &&
+                    r.already_marked_at && !r.is_scheduled_multi_site;
+                if (isConflict) return r;
+
+                if (status === 'Paid Leave' && !(r.wage_type || '').toLowerCase().includes('fixed')) {
+                    return r;
+                }
+
+                count++;
+                return {
+                    ...r,
+                    status,
+                    overtime_hours: status === 'Present' ? (r.overtime_hours || 0) : 0
+                };
+            })
+        );
+        setHasUnsavedChanges(true);
+        toast.success(`Updated ${count} selected worker(s) to ${status}`);
+    };
+
+    const batchAdjustOvertime = (delta) => {
+        if (selectedRosterIds.size === 0) return;
+        setAttendanceRoster(prev =>
+            prev.map(r => {
+                const id = r.labour_id || r.labourId;
+                if (selectedRosterIds.has(id) && r.status === 'Present') {
+                    const nextOt = Math.max(0, Math.min(12, Number(r.overtime_hours || 0) + delta));
+                    return { ...r, overtime_hours: nextOt };
+                }
+                return r;
+            })
+        );
+        setHasUnsavedChanges(true);
+    };
+
+    const markAllVisible = (visibleRoster, status) => {
+        setAttendanceRoster(prev =>
+            prev.map(r => {
+                const isVisible = visibleRoster.some(vr => (vr.labour_id || vr.labourId) === (r.labour_id || r.labourId));
+                if (!isVisible) return r;
+
+                const isConflict = (status === 'Present' || status === 'Half Day' || status === 'Paid Leave') &&
+                    r.already_marked_at && !r.is_scheduled_multi_site;
+                if (isConflict) return r;
+
+                if (status === 'Paid Leave' && !(r.wage_type || '').toLowerCase().includes('fixed')) {
+                    return r;
+                }
+
+                return {
+                    ...r,
+                    status,
+                    overtime_hours: status === 'Present' ? (r.overtime_hours || 0) : 0
+                };
+            })
+        );
+        setHasUnsavedChanges(true);
+        if (attendanceStatusFilter === 'Unmarked' && status) setAttendanceStatusFilter('All');
+        toast.info(`Marked visible workers as ${status}. Click 'Save Roster' to commit.`);
+    };
+
+    const markUnmarkedVisible = (visibleRoster, status) => {
+        let changed = 0;
+        setAttendanceRoster(prev =>
+            prev.map(r => {
+                const isVisible = visibleRoster.some(vr => (vr.labour_id || vr.labourId) === (r.labour_id || r.labourId));
+                if (!isVisible || r.status) return r;
+
+                const isConflict = (status === 'Present' || status === 'Half Day' || status === 'Paid Leave') &&
+                    r.already_marked_at && !r.is_scheduled_multi_site;
+                if (isConflict) return r;
+
+                if (status === 'Paid Leave' && !(r.wage_type || '').toLowerCase().includes('fixed')) {
+                    return r;
+                }
+
+                changed++;
+                return {
+                    ...r,
+                    status,
+                    overtime_hours: status === 'Present' ? (r.overtime_hours || 0) : 0
+                };
+            })
+        );
+        if (changed > 0) setHasUnsavedChanges(true);
+        if (attendanceStatusFilter === 'Unmarked') setAttendanceStatusFilter('All');
+        toast.info(`Marked ${changed} unmarked worker(s) as ${status}.`);
+    };
+
+    const resetAllVisible = (visibleRoster) => {
+        setAttendanceRoster(prev =>
+            prev.map(r => {
+                const isVisible = visibleRoster.some(vr => (vr.labour_id || vr.labourId) === (r.labour_id || r.labourId));
+                if (!isVisible) return r;
+                return { ...r, status: '', overtime_hours: 0 };
+            })
+        );
+        setHasUnsavedChanges(true);
+        toast.info('Cleared marks for visible workers.');
+    };
+
+    // ------------------------------------------------------------------------
+    // MONTHLY GRID EXPORT & HELPERS
+    // ------------------------------------------------------------------------
+    const exportMonthlyGridToExcel = () => {
+        if (!gridData || gridData.length === 0) {
+            toast.warn('No grid data available to export');
+            return;
+        }
+
+        const [yr, mo] = gridMonth.split('-').map(Number);
+        const daysInMonth = new Date(yr, mo, 0).getDate();
+
+        // Build CSV content
+        const headers = ['Worker Name', 'Role', ...Array.from({ length: daysInMonth }, (_, i) => `Day ${i + 1}`), 'Present (P)', 'Half Day (HD)', 'Absent (A)', 'Paid Leave (PL)', 'Overtime (OT hrs)'];
+        const rows = gridData.map(row => {
+            const dayValues = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                let st = row.days ? row.days[String(d)] || '' : '';
+                if (!st) {
+                    const dt = new Date(yr, mo - 1, d);
+                    if (dt.getDay() === 0) st = 'WO';
+                }
+                dayValues.push(st || '-');
+            }
+            return [
+                `"${row.name || ''}"`,
+                `"${row.role || ''}"`,
+                ...dayValues.map(v => `"${v}"`),
+                row.total_present || row.totalPresent || 0,
+                row.total_half_days || row.totalHalfDays || 0,
+                row.total_absent || row.totalAbsent || 0,
+                row.total_paid_leaves || row.totalPaidLeaves || 0,
+                (row.total_overtime_hours || row.totalOvertimeHours || 0).toFixed(1)
+            ];
+        });
+
+        const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${selectedSite?.site_name || 'Site'}_Monthly_Grid_${gridMonth}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        toast.success('Monthly attendance exported successfully!');
+    };
+
+    const exportPayoutsToExcel = async () => {
+        if (!selectedSite) return;
+        try {
+            await labourService.exportMonthlyWageExcel(selectedSite.site_id, financeMonth);
+            toast.success('Payout ledger exported to Excel!');
+        } catch (err) {
+            toast.error(err.message || 'Failed to export payroll ledger');
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // WAGE REVISION HISTORY HANDLERS
+    // ------------------------------------------------------------------------
+    const openWageRevisionDialog = async (worker) => {
+        setWageRevisionWorker(worker);
+        setShowAddRevisionForm(false);
+        setNewRevisionForm({
+            effective_date: new Date().toISOString().split('T')[0],
+            daily_rate: String(worker.monthly_salary || 500),
+            overtime_pay_per_hour: String(worker.overtime_pay_per_hour || 0),
+            notes: ''
+        });
+        setWageRevisionLoading(true);
+        try {
+            const res = await labourService.getLabourWageHistory(worker.labour_id || worker.labourId);
+            setWageRevisionList(res.history || []);
+        } catch (err) {
+            toast.error(err.message || 'Failed to load wage history');
+            setWageRevisionList([]);
+        } finally {
+            setWageRevisionLoading(false);
+        }
+    };
+
+    const handleSaveNewRevision = async (e) => {
+        e.preventDefault();
+        if (!wageRevisionWorker) return;
+        try {
+            await labourService.addLabourWageRevision(wageRevisionWorker.labour_id || wageRevisionWorker.labourId, {
+                effective_date: newRevisionForm.effective_date,
+                daily_rate: Number(newRevisionForm.daily_rate),
+                overtime_pay_per_hour: Number(newRevisionForm.overtime_pay_per_hour || 0),
+                notes: newRevisionForm.notes
+            });
+            toast.success('Wage revision logged!');
+            setShowAddRevisionForm(false);
+            openWageRevisionDialog(wageRevisionWorker);
+            loadInitialData();
+        } catch (err) {
+            toast.error(err.message || 'Failed to add wage revision');
+        }
+    };
+
+    const handleDeleteRevision = (revisionId) => {
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Delete Wage Revision',
+            message: 'Are you sure you want to remove this wage revision record?',
+            confirmText: 'Delete',
+            isDestructive: true,
+            onConfirm: async () => {
+                try {
+                    await labourService.deleteLabourWageRevision(revisionId);
+                    toast.success('Wage revision deleted');
+                    if (wageRevisionWorker) openWageRevisionDialog(wageRevisionWorker);
+                    loadInitialData();
+                } catch (err) {
+                    toast.error(err.message || 'Failed to delete revision');
+                }
+            }
+        });
+    };
+
+    // ------------------------------------------------------------------------
+    // ADVANCE & PAYOUT HANDLERS
+    // ------------------------------------------------------------------------
+    const loadAdvanceHistory = async (labourId, month = financeMonth) => {
         if (!labourId) return;
         setAdvanceHistoryLoading(true);
         try {
@@ -698,22 +688,21 @@ const MobileLabourManagement = () => {
 
     const handleOpenAdvance = (labour) => {
         const initialMonth = financeMonth || new Date().toISOString().slice(0, 7);
-        setAdvanceHistoryMonth(initialMonth);
         const todayStr = new Date().toISOString().split('T')[0];
         const initialDate = todayStr.startsWith(initialMonth) ? todayStr : `${initialMonth}-01`;
 
         setAdvanceForm({
-            labour_id: labour.labour_id,
+            labour_id: labour.labour_id || labour.labourId,
             site_id: selectedSite ? selectedSite.site_id.toString() : 'All',
             name: labour.name,
             amount: '',
             date: initialDate,
             notes: '',
-            accrued_credit: labour.accrued_credit,
-            net_payable: labour.net_payable
+            accrued_credit: labour.accrued_credit || 0,
+            net_payable: labour.net_payable || 0
         });
         setAdvanceHistoryView('month');
-        loadAdvanceHistory(labour.labour_id, initialMonth);
+        loadAdvanceHistory(labour.labour_id || labour.labourId, initialMonth);
         setShowAdvanceModal(true);
     };
 
@@ -727,57 +716,57 @@ const MobileLabourManagement = () => {
                 date: advanceForm.date,
                 notes: advanceForm.notes
             });
-            toast.success(`Advance logged successfully for ${advanceForm.name}`);
+            toast.success(`Advance logged for ${advanceForm.name}`);
             setAdvanceForm(prev => ({ ...prev, amount: '', notes: '' }));
             loadAdvanceHistory(advanceForm.labour_id, advanceHistoryView === 'month' ? financeMonth : null);
-            if (selectedHistoryLabour) {
-                handleViewHistory(selectedHistoryLabour);
-            } else {
-                fetchFinances(financeMonth);
-            }
+            if (selectedSite) loadFinances();
+            if (selectedHistoryLabour) handleViewHistory(selectedHistoryLabour);
         } catch (err) {
             toast.error(err.message || 'Failed to log advance payment');
         }
     };
 
     const handleDeleteAdvance = async (advanceId) => {
-        if (!window.confirm('Are you sure you want to delete this advance record?')) return;
-        try {
-            await labourService.deleteLabourAdvance(advanceId);
-            toast.success('Advance record deleted');
-            loadAdvanceHistory(advanceForm.labour_id, advanceHistoryView === 'month' ? financeMonth : null);
-            if (selectedHistoryLabour) {
-                handleViewHistory(selectedHistoryLabour);
-            } else {
-                fetchFinances(financeMonth);
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Delete Advance Entry',
+            message: 'Are you sure you want to delete this advance payment record?',
+            confirmText: 'Delete Entry',
+            isDestructive: true,
+            onConfirm: async () => {
+                try {
+                    await labourService.deleteLabourAdvance(advanceId);
+                    toast.success('Advance record deleted');
+                    loadAdvanceHistory(advanceForm.labour_id, advanceHistoryView === 'month' ? financeMonth : null);
+                    if (selectedSite) loadFinances();
+                    if (selectedHistoryLabour) handleViewHistory(selectedHistoryLabour);
+                } catch (err) {
+                    toast.error(err.message || 'Failed to delete advance');
+                }
             }
-        } catch (err) {
-            toast.error(err.message || 'Failed to delete advance');
-        }
+        });
     };
 
     const handleOpenPayout = (row) => {
-        const monthKey = financeMonth || (monthDetails?.month ? monthDetails.month : new Date().toISOString().slice(0, 7));
-        const isExisting = !!row.payout;
-
+        const isExisting = Boolean(row.payout);
         setPayoutForm({
             payout_id: isExisting ? row.payout.payout_id : null,
-            labour_id: row.labour_id,
+            labour_id: row.labour_id || row.labourId,
             site_id: selectedSite ? selectedSite.site_id.toString() : 'All',
             name: row.name,
-            month: monthKey,
-            wage_type: row.wage_type,
-            monthly_salary: row.monthly_salary,
-            present_days: row.attendance?.present || 0,
-            half_days: row.attendance?.half_day || 0,
-            absent_days: row.attendance?.absent || 0,
-            paid_leaves: row.attendance?.paid_leave || 0,
-            accrued_credit: row.accrued_credit,
-            advances_taken: row.advances_taken,
-            net_payable: row.net_payable,
-            paid_amount: isExisting ? row.payout.paid_amount : Math.max(0, row.net_payable),
+            month: financeMonth,
+            wage_type: row.wage_type || 'Daily Wage',
+            monthly_salary: row.monthly_salary || 0,
+            present_days: row.attendance?.present || row.present_days || 0,
+            half_days: row.attendance?.half_day || row.half_days || 0,
+            absent_days: row.attendance?.absent || row.absent_days || 0,
+            paid_leaves: row.attendance?.paid_leave || row.paid_leaves || 0,
+            accrued_credit: row.accrued_credit || 0,
+            advances_taken: row.advances_taken || row.total_advance || 0,
+            net_payable: row.net_payable || 0,
+            paid_amount: isExisting ? row.payout.paid_amount : Math.max(0, row.net_payable || 0),
             status: isExisting ? row.payout.status : 'Paid',
-            payment_date: isExisting ? row.payout.payment_date.split('T')[0] : new Date().toISOString().split('T')[0],
+            payment_date: isExisting ? row.payout.payment_date?.split('T')[0] : new Date().toISOString().split('T')[0],
             notes: isExisting ? row.payout.notes || '' : ''
         });
         setShowPayoutModal(true);
@@ -805,623 +794,2520 @@ const MobileLabourManagement = () => {
                 payment_date: payoutForm.payment_date,
                 notes: payoutForm.notes
             });
-            toast.success(`Payout successfully processed for ${payoutForm.name}`);
+            toast.success(`Payout processed for ${payoutForm.name}`);
             setShowPayoutModal(false);
-            if (selectedHistoryLabour) {
-                handleViewHistory(selectedHistoryLabour);
-            } else {
-                fetchFinances(financeMonth);
-            }
+            if (selectedSite) loadFinances();
+            if (selectedHistoryLabour) handleViewHistory(selectedHistoryLabour);
         } catch (err) {
-            toast.error(err.message || 'Failed to log monthly payout');
+            toast.error(err.message || 'Failed to log payout');
         }
     };
 
-    const handleOpenGlobalPayout = () => {
-        if (!selectedHistoryLabourDetails) return;
-        const lab = selectedHistoryLabourDetails;
-        const monthKey = new Date().toISOString().slice(0, 7);
-        setPayoutForm({
-            payout_id: null,
-            labour_id: lab.labour_id,
-            site_id: 'All',
-            name: lab.name,
-            month: monthKey,
-            wage_type: lab.wage_type,
-            monthly_salary: lab.monthly_salary,
-            present_days: 0,
-            half_days: 0,
-            absent_days: 0,
-            paid_leaves: 0,
-            accrued_credit: lab.global_earned,
-            advances_taken: lab.global_advances,
-            net_payable: lab.global_net_payable,
-            paid_amount: lab.global_net_payable,
-            status: 'Paid',
-            payment_date: new Date().toISOString().split('T')[0],
-            notes: ''
-        });
-        setShowPayoutModal(true);
+    const handleViewHistory = async (lab) => {
+        setSelectedHistoryLabour(lab);
+        setHistoryTab('sites');
+        setHistoryLoading(true);
+        try {
+            const res = await labourService.getLabourWorkHistory(lab.labour_id || lab.labourId);
+            setLabourHistoryData(res.history || []);
+            setLabourPayoutHistory(res.payouts || []);
+            setSelectedHistoryLabourDetails(res.labour || null);
+        } catch (err) {
+            toast.error(err.message || 'Failed to load work history');
+        } finally {
+            setHistoryLoading(false);
+        }
     };
 
-    const handleOpenGlobalAdvance = () => {
-        if (!selectedHistoryLabourDetails) return;
-        const lab = selectedHistoryLabourDetails;
-        setAdvanceForm({
-            labour_id: lab.labour_id,
-            site_id: 'All',
-            name: lab.name,
-            amount: '',
-            date: new Date().toISOString().split('T')[0],
-            notes: '',
-            accrued_credit: lab.global_earned,
-            net_payable: lab.global_net_payable
-        });
-        setShowAdvanceModal(true);
+    // ------------------------------------------------------------------------
+    // SITE MANAGEMENT HANDLERS
+    // ------------------------------------------------------------------------
+    const handleSaveSite = async (e) => {
+        e.preventDefault();
+        try {
+            if (editingSite) {
+                await labourService.updateSite(editingSite.site_id, siteForm);
+                toast.success('Site updated successfully');
+            } else {
+                await labourService.createSite(siteForm);
+                toast.success('Site created successfully');
+            }
+            setShowSiteModal(false);
+            setEditingSite(null);
+            setSiteForm({ site_name: '', location_details: '', status: 'Active' });
+            loadInitialData();
+        } catch (err) {
+            toast.error(err.message || 'Failed to save site');
+        }
     };
 
+    const handleConfirmDeleteSite = (siteId) => {
+        const site = sites.find(s => s.site_id === siteId);
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Delete Construction Site',
+            message: `Are you sure you want to delete '${site?.site_name || 'this site'}'? This will permanently remove its site allocations.`,
+            confirmText: 'Delete Site',
+            isDestructive: true,
+            onConfirm: async () => {
+                try {
+                    await labourService.deleteSite(siteId);
+                    toast.success('Site deleted successfully');
+                    if (selectedSite?.site_id === siteId) setSelectedSite(null);
+                    loadInitialData();
+                } catch (err) {
+                    toast.error(err.message || 'Failed to delete site');
+                }
+            }
+        });
+    };
+
+    // ------------------------------------------------------------------------
+    // WORKER DIRECTORY HANDLERS
+    // ------------------------------------------------------------------------
+    const handleSaveLabour = async (e) => {
+        e.preventDefault();
+        try {
+            const cleanPhone = labourForm.phone ? labourForm.phone.trim().replace(/[\s\-()]/g, '') : '';
+            if (cleanPhone) {
+                const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
+                if (!phoneRegex.test(cleanPhone)) {
+                    toast.error('Please enter a valid 10-digit contact number');
+                    return;
+                }
+            }
+
+            const payload = {
+                ...labourForm,
+                phone: cleanPhone || null,
+                wage_type: 'Daily Wage',
+                monthly_salary: Number(labourForm.monthly_salary),
+                allowed_leaves: 0,
+                site_id: labourForm.site_id ? Number(labourForm.site_id) : null,
+                overtime_pay_per_hour: Number(labourForm.overtime_pay_per_hour || 0)
+            };
+
+            if (editingLabour) {
+                await labourService.updateLabour(editingLabour.labour_id || editingLabour.labourId, payload);
+                toast.success('Worker profile updated');
+            } else {
+                await labourService.createLabour(payload);
+                toast.success('Worker registered successfully');
+            }
+            setShowLabourModal(false);
+            setEditingLabour(null);
+            setLabourForm({
+                name: '', phone: '', sex: 'Male', role: '',
+                wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
+                overtime_pay_per_hour: '0', status: 'Active'
+            });
+            loadInitialData();
+            if (selectedSite) loadAttendanceRoster();
+        } catch (err) {
+            toast.error(err.message || 'Failed to save worker');
+        }
+    };
+
+    const handleConfirmDeleteLabour = (labourId) => {
+        const worker = labours.find(w => (w.labour_id || w.labourId) === labourId);
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Delete Worker Profile',
+            message: `Are you sure you want to delete '${worker?.name || 'this worker'}'? This action cannot be undone.`,
+            confirmText: 'Delete Worker',
+            isDestructive: true,
+            onConfirm: async () => {
+                try {
+                    await labourService.deleteLabour(labourId);
+                    toast.success('Worker deleted successfully');
+                    loadInitialData();
+                    if (selectedSite) loadAttendanceRoster();
+                } catch (err) {
+                    toast.error(err.message || 'Failed to delete worker');
+                }
+            }
+        });
+    };
+
+    // ------------------------------------------------------------------------
+    // BORROW WORKER HANDLER
+    // ------------------------------------------------------------------------
+    const handleBorrowLabour = (lab) => {
+        setAttendanceRoster(prev => [
+            ...prev,
+            {
+                labour_id: lab.labour_id || lab.labourId,
+                name: lab.name,
+                role: lab.role,
+                wage_type: lab.wage_type || 'Daily Wage',
+                overtime_pay_per_hour: Number(lab.overtime_pay_per_hour || 0),
+                status: 'Present',
+                overtime_hours: 0,
+                is_borrowed: true
+            }
+        ]);
+        setHasUnsavedChanges(true);
+        setShowBorrowModal(false);
+        setBorrowSearchQuery('');
+        toast.info(`Added ${lab.name} to roster. Click 'Save Roster' to confirm.`);
+    };
+
+    // ------------------------------------------------------------------------
+    // BULK TRANSFER HANDLER
+    // ------------------------------------------------------------------------
+    const handleExecuteBulkTransfer = async (e) => {
+        e.preventDefault();
+        if (selectedTransferLabourIds.length === 0) {
+            toast.warn('Select at least one worker to transfer');
+            return;
+        }
+        try {
+            await labourService.bulkTransferLabours({
+                source_site_id: bulkSourceSiteId === 'All' ? null : Number(bulkSourceSiteId),
+                destination_site_id: bulkDestinationSiteId === 'Unassigned' || !bulkDestinationSiteId ? null : Number(bulkDestinationSiteId),
+                labour_ids: selectedTransferLabourIds
+            });
+            toast.success(`Transferred ${selectedTransferLabourIds.length} worker(s) successfully!`);
+            setShowBulkTransferModal(false);
+            setSelectedTransferLabourIds([]);
+            await loadInitialData();
+            if (selectedSite) loadAttendanceRoster();
+        } catch (err) {
+            toast.error(err.message || 'Failed to transfer workers');
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // DAILY SCHEDULE PLANNER HANDLER
+    // ------------------------------------------------------------------------
+    const handleOpenScheduleModal = async (labour) => {
+        setSelectedScheduleLabour(labour);
+        const todayStr = new Date().toISOString().split('T')[0];
+        setScheduleDate(todayStr);
+        setShowScheduleModal(true);
+        setScheduleLoading(true);
+        try {
+            const res = await labourService.getLabourSchedule(labour.labour_id || labour.labourId, todayStr);
+            setScheduleSites(res.site_ids || []);
+        } catch (err) {
+            toast.error(err.message || 'Failed to fetch schedule');
+            setScheduleSites([]);
+        } finally {
+            setScheduleLoading(false);
+        }
+    };
+
+    const handleSaveSchedule = async () => {
+        if (!selectedScheduleLabour) return;
+        try {
+            await labourService.saveLabourSchedule({
+                labour_id: selectedScheduleLabour.labour_id || selectedScheduleLabour.labourId,
+                date: scheduleDate,
+                site_ids: scheduleSites
+            });
+            toast.success(`Schedule updated for ${selectedScheduleLabour.name}`);
+            setShowScheduleModal(false);
+            loadInitialData();
+        } catch (err) {
+            toast.error(err.message || 'Failed to save daily schedule');
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // BULK UPLOAD EXCEL HANDLERS
+    // ------------------------------------------------------------------------
+    const handleCSVUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        setIsUploadingBulk(true);
+        try {
+            const parsed = await labourService.parseBulkLabours(formData);
+            if (!parsed || parsed.length === 0) {
+                toast.error('The uploaded file appears to be empty or invalid.');
+                return;
+            }
+            setParsedLabours(parsed);
+        } catch (err) {
+            toast.error(err.message || 'Failed to parse file. Please verify columns.');
+        } finally {
+            setIsUploadingBulk(false);
+        }
+    };
+
+    const handleSaveBulkLabours = async () => {
+        const valid = parsedLabours.filter(l => l.isValid);
+        if (valid.length === 0) {
+            toast.warn('No valid labour rows to import.');
+            return;
+        }
+        setIsUploadingBulk(true);
+        try {
+            await labourService.bulkCreateLabours(valid);
+            toast.success(`Successfully imported ${valid.length} worker(s)!`);
+            setShowBulkLabourModal(false);
+            setParsedLabours([]);
+            loadInitialData();
+        } catch (err) {
+            toast.error(err.message || 'Failed to bulk import workers');
+        } finally {
+            setIsUploadingBulk(false);
+        }
+    };
+
+    const downloadCSVTemplate = async () => {
+        try {
+            const data = await labourService.downloadBulkTemplate();
+            const url = window.URL.createObjectURL(new Blob([data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'labour_bulk_upload_template.xlsx';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            toast.error(err.message || 'Failed to download template');
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // RENDER: PRIMARY TAB BAR (SITES OVERVIEW VS WORKER DIRECTORY)
+    // ------------------------------------------------------------------------
     return (
         <MobileDashboardLayout title="Labour Management">
-            <div className="space-y-4 pb-24 text-xs">
-
-                {/* Status Tabs - Pill Style */}
-                <div className="bg-[#f6f8fa] dark:bg-[#161b22] p-1 flex rounded-xl border border-slate-200 dark:border-[#30363d] sticky top-16 z-20">
-                    {[
-                        { id: 'sites', label: 'Sites Overview' },
-                        { id: 'directory', label: 'Labour Directory' }
-                    ].map((tab) => (
+            <div className="space-y-3.5 pb-24 text-xs font-sans">
+                {/* Top Tab Bar: Only displayed when not drilled down into a specific site */}
+                {selectedSite === null && (
+                    <div className="bg-slate-200/80 dark:bg-[#161B22] p-1 flex rounded-xl border border-slate-300 dark:border-[#30363D] sticky top-16 z-20 shadow-2xs">
                         <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex-1 py-2 text-[10px] rounded-lg transition-all cursor-pointer ${activeTab === tab.id
-                                    ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-[#58a6ff] dark:border dark:border-[#30363d] shadow-sm font-medium'
-                                    : 'text-slate-500 dark:text-[#8b949e] hover:text-slate-900 dark:hover:text-[#f0f6fc] font-normal'
-                                }`}
+                            type="button"
+                            onClick={() => setActiveTab('sites')}
+                            className={`flex-1 py-2 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                activeTab === 'sites'
+                                    ? 'bg-indigo-600 text-white font-semibold shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-400 font-medium hover:text-slate-900 dark:hover:text-white'
+                            }`}
                         >
-                            {tab.label}
+                            <Building2 size={14} />
+                            <span>Sites Overview</span>
+                            <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                                activeTab === 'sites' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-[#30363D] text-slate-700 dark:text-slate-300'
+                            }`}>
+                                {sites.length}
+                            </span>
                         </button>
-                    ))}
-                </div>
-
-                {activeTab === 'sites' && selectedSite !== null && (
-                    <div className="flex items-center gap-0.5 text-[10px] font-semibold text-slate-450 dark:text-[#8b949e] px-1 select-none animate-in fade-in duration-200">
-                        <span className="hover:text-indigo-600 dark:hover:text-[#58a6ff] cursor-pointer transition-colors" onClick={() => setSelectedSite(null)}>Sites Overview</span>
-                        <ChevronRight size={10} className="text-slate-350 dark:text-[#8b949e]" />
-                        <span className="text-slate-700 dark:text-[#f0f6fc] font-semibold truncate max-w-[150px]">{selectedSite.site_name}</span>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('directory')}
+                            className={`flex-1 py-2 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                activeTab === 'directory'
+                                    ? 'bg-indigo-600 text-white font-semibold shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-400 font-medium hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                        >
+                            <Users size={14} />
+                            <span>Worker Directory</span>
+                            <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                                activeTab === 'directory' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-[#30363D] text-slate-700 dark:text-slate-300'
+                            }`}>
+                                {labours.length}
+                            </span>
+                        </button>
                     </div>
                 )}
 
+                {/* Main Body Content */}
                 {loading ? (
-                    <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl p-6 shadow-xs my-4">
+                    <div className="bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] rounded-2xl p-8 shadow-2xs my-4">
                         <LoadingScreen message="Loading workforce data..." fullScreen={false} />
                     </div>
                 ) : (
                     <>
-                        {/* ==========================================
-                            TAB 1: SITES OVERVIEW & SITE DETAIL DASHBOARD
-                            ========================================== */}
+                        {/* ====================================================
+                            TAB 1: SITES OVERVIEW OR DRILL-DOWN DASHBOARD
+                            ==================================================== */}
                         {activeTab === 'sites' && (
                             selectedSite === null ? (
-                                <div className="space-y-3 animate-in fade-in duration-150">
-                                    <div className="flex justify-between items-center bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm">
-                                        <span className="font-semibold text-slate-700 dark:text-white">Active Projects</span>
+                                /* SITES OVERVIEW (NO SITE SELECTED) */
+                                <div className="space-y-3 animate-in fade-in duration-200">
+                                    {/* 4 KPI Stat Cards (2x2 Grid) */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <LabourStatCard
+                                            title="Active Sites"
+                                            value={sites.filter(s => s.status === 'Active').length}
+                                            icon={HardHat}
+                                            iconColor="#10B981"
+                                            subtitle="Ongoing operations"
+                                        />
+                                        <LabourStatCard
+                                            title="Completed"
+                                            value={sites.filter(s => s.status === 'Completed').length}
+                                            icon={CheckCircle2}
+                                            iconColor="#3B82F6"
+                                            subtitle="Past projects"
+                                        />
+                                        <LabourStatCard
+                                            title="Registered Labours"
+                                            value={labours.length}
+                                            icon={Users}
+                                            iconColor="#6366F1"
+                                            subtitle="Active workforce"
+                                        />
+                                        <LabourStatCard
+                                            title="Total Sites"
+                                            value={sites.length}
+                                            icon={Building}
+                                            iconColor="#F59E0B"
+                                            subtitle="All contracts"
+                                        />
+                                    </div>
+
+                                    {/* Search & Add Site Action Row */}
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                            <input
+                                                type="text"
+                                                value={siteSearch}
+                                                onChange={(e) => setSiteSearch(e.target.value)}
+                                                placeholder="Search site or location..."
+                                                className="w-full pl-8 pr-7 py-2 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] rounded-xl text-xs text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+                                            />
+                                            {siteSearch && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSiteSearch('')}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                >
+                                                    <X size={13} />
+                                                </button>
+                                            )}
+                                        </div>
                                         <button
-                                            onClick={() => { setEditingSite(null); setSiteForm({ site_name: '', location_details: '', status: 'Active' }); setShowSiteModal(true); }}
-                                            className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg font-medium flex items-center gap-1 text-[10px]"
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingSite(null);
+                                                setSiteForm({ site_name: '', location_details: '', status: 'Active' });
+                                                setShowSiteModal(true);
+                                            }}
+                                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold flex items-center gap-1.5 text-xs shadow-xs shrink-0 cursor-pointer transition-all active:scale-95"
                                         >
-                                            <Plus size={12} /> Add Site
+                                            <Plus size={14} strokeWidth={2.5} />
+                                            <span>Add Site</span>
                                         </button>
                                     </div>
 
-                                    {sites.length === 0 ? (
-                                        <div className="p-10 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 bg-white dark:bg-github-dark-subtle">
-                                            No construction sites found.
-                                        </div>
-                                    ) : (
-                                        sites.map(site => (
-                                            <div
-                                                key={site.site_id}
-                                                onClick={() => setSelectedSite(site)}
-                                                className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl flex flex-col justify-between gap-2 shadow-sm cursor-pointer hover:border-indigo-500 transition-all"
-                                            >
-                                                <div>
-                                                    <div className="flex justify-between items-center">
-                                                        <h4 className="font-semibold text-xs text-slate-800 dark:text-white">{site.site_name}</h4>
-                                                        <span className={`px-2 py-0.5 text-[8px] font-medium rounded-full uppercase ${site.status === 'Active' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-github-dark-muted'
-                                                            }`}>
-                                                            {site.status}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[10px] text-slate-500 dark:text-github-dark-muted mt-1">{site.location_details || 'No details.'}</p>
-                                                    <span className="text-[9px] font-medium text-indigo-600 dark:text-indigo-400 mt-1 block">
-                                                        {labours.filter(l => l.site_id === site.site_id).length} Assigned Workers
+                                    {/* Status Filter Chips */}
+                                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                                        {['All', 'Active', 'Completed', 'On Hold'].map(st => {
+                                            const isSelected = siteStatusFilter === st;
+                                            let count = sites.length;
+                                            if (st === 'Active') count = sites.filter(s => s.status === 'Active').length;
+                                            else if (st === 'Completed') count = sites.filter(s => s.status === 'Completed').length;
+                                            else if (st === 'On Hold') count = sites.filter(s => s.status === 'On Hold' || s.status === 'Inactive').length;
+
+                                            return (
+                                                <button
+                                                    key={st}
+                                                    type="button"
+                                                    onClick={() => setSiteStatusFilter(st)}
+                                                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                                                        isSelected
+                                                            ? 'bg-indigo-600 text-white font-semibold shadow-2xs'
+                                                            : 'bg-white dark:bg-[#161B22] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-[#30363D] hover:bg-slate-50 dark:hover:bg-[#21262D]'
+                                                    }`}
+                                                >
+                                                    <span>{st}</span>
+                                                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                                                        isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-[#30363D] text-slate-500 dark:text-slate-400'
+                                                    }`}>
+                                                        {count}
                                                     </span>
-                                                </div>
-                                                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-github-dark-border/40">
-                                                    <button onClick={(e) => { e.stopPropagation(); handleEditSite(site); }} className="p-1.5 text-slate-500 rounded border border-slate-200 dark:border-github-dark-border"><Edit2 size={10} /></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteSite(site.site_id); }} className="p-1.5 text-red-500 rounded border border-slate-200 dark:border-github-dark-border"><Trash2 size={10} /></button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Filtered Sites List */}
+                                    <div className="space-y-2">
+                                        {(() => {
+                                            const filteredSites = sites.filter(s => {
+                                                if (siteStatusFilter === 'Active' && s.status !== 'Active') return false;
+                                                if (siteStatusFilter === 'Completed' && s.status !== 'Completed') return false;
+                                                if (siteStatusFilter === 'On Hold' && s.status !== 'On Hold' && s.status !== 'Inactive') return false;
+                                                if (siteSearch.trim()) {
+                                                    const q = siteSearch.toLowerCase();
+                                                    const matchName = s.site_name?.toLowerCase().includes(q);
+                                                    const matchLoc = s.location_details?.toLowerCase().includes(q);
+                                                    if (!matchName && !matchLoc) return false;
+                                                }
+                                                return true;
+                                            });
+
+                                            if (filteredSites.length === 0) {
+                                                return (
+                                                    <div className="p-8 border border-dashed border-slate-200 dark:border-[#30363D] rounded-2xl text-center bg-white dark:bg-[#161B22] space-y-2">
+                                                        <Building className="mx-auto text-slate-300 dark:text-slate-600" size={32} />
+                                                        <p className="text-slate-500 dark:text-slate-400 font-medium">No construction sites found.</p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingSite(null);
+                                                                setSiteForm({ site_name: '', location_details: '', status: 'Active' });
+                                                                setShowSiteModal(true);
+                                                            }}
+                                                            className="text-indigo-600 dark:text-indigo-400 text-xs font-semibold hover:underline"
+                                                        >
+                                                            + Create Construction Site
+                                                        </button>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return filteredSites.map(site => {
+                                                const assignedCount = labours.filter(l => l.site_id === site.site_id || (l.site_ids && l.site_ids.includes(site.site_id))).length;
+                                                return (
+                                                    <div
+                                                        key={site.site_id}
+                                                        onClick={() => handleSelectSite(site)}
+                                                        className="p-3.5 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs hover:border-indigo-500 dark:hover:border-indigo-500 transition-all cursor-pointer flex flex-col gap-2.5"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/50 dark:border-indigo-800/40">
+                                                                    <Building size={16} />
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <h4 className="font-semibold text-xs text-slate-900 dark:text-white truncate">
+                                                                        {site.site_name}
+                                                                    </h4>
+                                                                    {site.location_details && (
+                                                                        <p className="text-[10px] text-slate-500 dark:text-[#8B949E] truncate">
+                                                                            {site.location_details}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <SiteStatusBadge status={site.status} />
+                                                        </div>
+
+                                                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#30363D]/60 text-xs">
+                                                            <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                                                                <Users size={13} />
+                                                                <span>{assignedCount} Worker{assignedCount === 1 ? '' : 's'}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditingSite(site);
+                                                                        setSiteForm({
+                                                                            site_name: site.site_name,
+                                                                            location_details: site.location_details || '',
+                                                                            status: site.status
+                                                                        });
+                                                                        setShowSiteModal(true);
+                                                                    }}
+                                                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363D] transition-colors"
+                                                                    title="Edit Site"
+                                                                >
+                                                                    <Edit2 size={13} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleConfirmDeleteSite(site.site_id)}
+                                                                    className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                                                                    title="Delete Site"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSelectSite(site)}
+                                                                    className="p-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
+                                                                    title="Open Dashboard"
+                                                                >
+                                                                    <ChevronRight size={15} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
+                                    </div>
                                 </div>
                             ) : (
-                                /* Selected Site Detail Dashboard */
-                                <div className="space-y-4 animate-in fade-in duration-150">
-                                    <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm space-y-3">
-                                        <div>
-                                            <h3 className="font-semibold text-xs text-slate-800 dark:text-white">{selectedSite.site_name}</h3>
+                                /* ====================================================
+                                   SITE DRILL-DOWN DASHBOARD (WITH 3 SUB-TABS)
+                                   ==================================================== */
+                                <div className="space-y-3 animate-in fade-in duration-200">
+                                    {/* Unified Site Header */}
+                                    <div className="bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] p-3 rounded-2xl shadow-2xs space-y-2.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleBackToSites}
+                                                className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold text-xs py-0.5 px-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg transition-colors cursor-pointer shrink-0"
+                                            >
+                                                <ChevronLeft size={16} />
+                                                <span>Sites</span>
+                                            </button>
+                                            <div className="min-w-0 flex-1 truncate text-center">
+                                                <h3 className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                                    {selectedSite.site_name}
+                                                </h3>
+                                            </div>
+                                            <SiteStatusBadge status={selectedSite.status} />
                                         </div>
 
-                                        <div className="flex bg-slate-100 dark:bg-[#161b22] p-0.5 rounded-lg select-none border border-slate-250 dark:border-github-dark-border">
+                                        {/* Sleek Sub-Tab Switcher (Attendance, Monthly Grid, Finances) */}
+                                        <div className="bg-slate-100 dark:bg-[#0D1117] p-1 rounded-xl flex border border-slate-200/80 dark:border-[#30363D]">
                                             {[
-                                                { id: 'attendance', label: 'Checklist' },
-                                                { id: 'finances', label: 'Ledger' }
-                                            ].map((tab) => (
-                                                <button
-                                                    key={tab.id}
-                                                    onClick={() => setSubTab(tab.id)}
-                                                    className={`flex-1 py-1 text-[10px] rounded-md transition-all cursor-pointer ${subTab === tab.id
-                                                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-[#f0f6fc] shadow-sm font-medium'
-                                                            : 'text-slate-500 dark:text-slate-400 font-normal'
+                                                { id: 'attendance', label: 'Attendance', icon: CheckSquare },
+                                                { id: 'grid', label: 'Monthly Grid', icon: Calendar },
+                                                { id: 'finances', label: 'Finances', icon: Wallet }
+                                            ].map(tab => {
+                                                const Icon = tab.icon;
+                                                const isSelected = subTab === tab.id;
+                                                return (
+                                                    <button
+                                                        key={tab.id}
+                                                        type="button"
+                                                        onClick={() => setSubTab(tab.id)}
+                                                        className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                            isSelected
+                                                                ? 'bg-indigo-600 text-white font-semibold shadow-xs'
+                                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                                                         }`}
-                                                >
-                                                    {tab.label}
-                                                </button>
-                                            ))}
+                                                    >
+                                                        <Icon size={13} />
+                                                        <span>{tab.label}</span>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
-                                    {/* Component views filtered for selectedSite */}
+                                    {/* ------------------------------------------------
+                                        SUB-TAB 1: DAILY ATTENDANCE
+                                        ------------------------------------------------ */}
                                     {subTab === 'attendance' && (
-                                         <div className="space-y-3 animate-in fade-in duration-100">
-                                             {selectedSite?.status === 'Completed' && selectedSite.end_date && (
-                                                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-3 rounded-xl text-amber-700 dark:text-amber-400 font-semibold text-[10px] flex items-start gap-1.5 shadow-sm">
-                                                     <AlertTriangle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                                                     <span>
-                                                         This site was marked completed on <strong>{new Date(selectedSite.end_date).toLocaleDateString()}</strong>. Attendance is restricted to dates strictly before completion.
-                                                     </span>
-                                                 </div>
-                                             )}
-                                             <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex flex-col gap-2.5">
-                                                      <MobileDatePicker
-                                                          label="Roster Date"
-                                                          value={attendanceDate}
-                                                          onChange={(val) => setAttendanceDate(val)}
-                                                          maxDate={getMaxAttendanceDate()}
-                                                      />
-                                                      <MinimalSelect
-                                                          options={[
-                                                              { value: '', label: 'All Roles' },
-                                                              ...((() => {
-                                                                  const seen = new Map();
-                                                                  labours.forEach(l => {
-                                                                      const r = (l.role || '').trim();
-                                                                      if (r) {
-                                                                          const key = r.toLowerCase();
-                                                                          if (!seen.has(key)) seen.set(key, r);
-                                                                      }
-                                                                  });
-                                                                  return [...seen.values()].sort();
-                                                              })().map(r => ({ value: r, label: r })))
-                                                          ]}
-                                                          value={attendanceRoleFilter}
-                                                          onChange={(val) => setAttendanceRoleFilter(val)}
-                                                          variant="input"
-                                                          size="sm"
-                                                          triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl font-medium"
-                                                      />
-                                             </div>
+                                        <div className="space-y-3 animate-in fade-in duration-150">
+                                            {/* Completed Site Restriction Banner */}
+                                            {selectedSite.status === 'Completed' && selectedSite.end_date && (
+                                                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl flex items-start gap-2 text-[10px] text-amber-800 dark:text-amber-300">
+                                                    <AlertTriangle size={14} className="shrink-0 text-amber-600 mt-0.5" />
+                                                    <span>
+                                                        This site completed on <strong>{formatPlatformDate(selectedSite.end_date)}</strong>. Attendance is restricted to dates strictly before completion.
+                                                    </span>
+                                                </div>
+                                            )}
 
-                                             <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm">
-                                                 <div className="p-3 border-b border-slate-105 dark:border-github-dark-border flex justify-between items-center bg-slate-50 dark:bg-github-dark-border/40 gap-2">
-                                                     <span className="font-semibold text-[11px] truncate">Roster ({attendanceRoster.filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length})</span>
-                                                     <div className="flex gap-1.5 shrink-0">
-                                                         <button
-                                                             type="button"
-                                                             onClick={() => {
-                                                                 setSelectedLabourIds([]);
-                                                                 setBulkSourceSiteId('All');
-                                                                 setBulkDestinationSiteId(selectedSite ? String(selectedSite.site_id) : '');
-                                                                 setShowBulkTransferModal(true);
-                                                             }}
-                                                             className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-medium flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
-                                                         >
-                                                             <Building size={10} /> Bulk Move
-                                                         </button>
-                                                         <button
-                                                             type="button"
-                                                             onClick={() => setShowBorrowModal(true)}
-                                                             className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-medium flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
-                                                         >
-                                                             <Plus size={10} /> Add Worker
-                                                         </button>
-                                                         <button
-                                                              disabled={attendanceRoster.length === 0 || savingRoster}
-                                                              onClick={handleSaveAttendance}
-                                                              className="px-2 py-1 bg-indigo-600 text-white rounded-lg font-medium flex items-center gap-1 shadow-sm disabled:opacity-50 text-[9px] min-w-[55px] justify-center"
-                                                          >
-                                                              {savingRoster ? (
-                                                                  <>
-                                                                      <Loader2 size={10} className="animate-spin" /> Saving...
-                                                                  </>
-                                                              ) : (
-                                                                  <>
-                                                                      <Save size={10} /> Save
-                                                                  </>
-                                                              )}
-                                                          </button>
-                                                     </div>
-                                                 </div>
-
-                                                  {attendanceLoading ? (
-                                                      <div className="py-8">
-                                                          <LoadingScreen size="sm" message="Loading roll call roster..." fullScreen={false} />
-                                                      </div>
-                                                  ) : attendanceRoster.length === 0 ? (
-                                                      <div className="p-8 text-center text-slate-400 dark:text-[#8b949e] italic">No labours on this site. Assign them in Directory.</div>
-                                                  ) : attendanceRoster.filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length === 0 ? (
-                                                      <div className="p-8 text-center text-slate-400 dark:text-[#8b949e] italic">No labours match the selected role filter.</div>
-                                                  ) : (
-                                                      <div className="divide-y divide-slate-100 dark:divide-[#21262d] bg-slate-50/30 dark:bg-transparent">
-                                                          {attendanceRoster
-                                                              .filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase())
-                                                              .map(item => (
-                                                              <div key={item.labour_id} className="p-4 flex flex-col gap-3 hover:bg-slate-50/50 dark:hover:bg-[#161b22]/40 transition-colors">
-                                                                  <div className="flex items-center justify-between gap-3">
-                                                                      <div>
-                                                                          <div className="flex items-center gap-2">
-                                                                              <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-xs truncate">{item.name}</h4>
-                                                                              {item.is_borrowed && (
-                                                                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold text-[8px] uppercase tracking-wider">Added</span>
-                                                                              )}
-                                                                          </div>
-                                                                          {item.already_marked_at && (
-                                                                              <p className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
-                                                                                  <AlertTriangle size={10} className="shrink-0" />
-                                                                                  <span>Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}</span>
-                                                                              </p>
-                                                                          )}
-                                                                          <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400 dark:text-[#8b949e] font-mono uppercase">
-                                                                              <span>{item.role}</span>
-                                                                          </div>
-                                                                      </div>
-                                                                  </div>
-
-                                                                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                                                                      {[
-                                                                          { id: 'Present', label: 'Present (Full Day)', activeColor: 'bg-emerald-500 text-white dark:bg-emerald-600 shadow-sm ring-1 ring-emerald-400/50', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-[#30363d] hover:bg-slate-100 dark:hover:bg-[#21262d] dark:hover:text-white' },
-                                                                          { id: 'Half Day', label: 'Half Day', activeColor: 'bg-amber-500 text-white dark:bg-amber-600 shadow-sm ring-1 ring-amber-400/50', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-[#30363d] hover:bg-slate-100 dark:hover:bg-[#21262d] dark:hover:text-white' },
-                                                                          { id: 'Absent', label: 'Absent', activeColor: 'bg-rose-500 text-white dark:bg-rose-600 shadow-sm ring-1 ring-rose-400/50', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-[#30363d] hover:bg-slate-100 dark:hover:bg-[#21262d] dark:hover:text-white' }
-                                                                      ].map(statusOpt => {
-                                                                          const isSelected = item.status === statusOpt.id;
-                                                                          const isButtonDisabled = (statusOpt.id === 'Present' || statusOpt.id === 'Half Day' || statusOpt.id === 'Paid Leave') &&
-                                                                              item.already_marked_at && !item.is_scheduled_multi_site;
-                                                                          return (
-                                                                              <button
-                                                                                  key={statusOpt.id}
-                                                                                  onClick={() => handleStatusChange(item.labour_id, statusOpt.id)}
-                                                                                  disabled={isButtonDisabled}
-                                                                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-medium transition-all duration-150 whitespace-nowrap ${
-                                                                                      isButtonDisabled
-                                                                                          ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-850/40 dark:text-[#8b949e] border border-slate-200/50 dark:border-[#30363d]/50'
-                                                                                          : isSelected
-                                                                                              ? statusOpt.activeColor + ' shadow-sm cursor-pointer'
-                                                                                              : statusOpt.inactiveColor + ' cursor-pointer'
-                                                                                  }`}
-                                                                              >
-                                                                                  {statusOpt.label}
-                                                                              </button>
-                                                                          );
-                                                                      })}
-                                                                  </div>
-
-                                                                  {item.status === 'Present' && (
-                                                                      <div className="flex items-center justify-between mt-1 bg-slate-100/50 dark:bg-[#161b22]/40 rounded-xl p-2 px-3 border border-slate-200/30 dark:border-github-dark-border/20">
-                                                                          <span className="text-[10px] text-slate-500 dark:text-github-dark-muted font-medium uppercase">Overtime Hours:</span>
-                                                                          <div className="flex items-center gap-1.5">
-                                                                              <button
-                                                                                  type="button"
-                                                                                  disabled={(item.overtime_hours || 0) <= 0}
-                                                                                  onClick={() => handleOvertimeChange(item.labour_id, Math.max(0, (item.overtime_hours || 0) - 1))}
-                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-medium cursor-pointer"
-                                                                              >
-                                                                                  -
-                                                                              </button>
-                                                                              <span className="w-8 text-center text-xs font-semibold text-slate-800 dark:text-white font-mono">
-                                                                                  {item.overtime_hours || 0}
-                                                                              </span>
-                                                                              <button
-                                                                                  type="button"
-                                                                                  disabled={(item.overtime_hours || 0) >= 12}
-                                                                                  onClick={() => handleOvertimeChange(item.labour_id, Math.min(12, (item.overtime_hours || 0) + 1))}
-                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-medium cursor-pointer"
-                                                                              >
-                                                                                  +
-                                                                              </button>
-                                                                          </div>
-                                                                      </div>
-                                                                  )}
-                                                             </div>
-                                                         ))}
-                                                     </div>
-                                                 )}
-                                             </div>
-                                         </div>
-                                     )}
-
-
-                                    {subTab === 'finances' && (
-                                        <div className="space-y-3 animate-in fade-in duration-100">
-                                            {/* View Mode Toggle */}
-                                            <div className="flex bg-slate-100 dark:bg-[#161b22] p-1 rounded-xl border border-slate-200 dark:border-[#30363d] gap-1">
+                                            {/* 1. Date Navigation & Quick Actions Bar */}
+                                            <div className="p-2.5 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs flex items-center justify-between gap-1.5">
+                                                {/* Prev Day */}
                                                 <button
                                                     type="button"
-                                                    onClick={() => setLedgerViewMode('matrix')}
-                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
-                                                        ledgerViewMode === 'matrix'
-                                                            ? 'bg-indigo-600 text-white shadow-xs font-medium'
-                                                            : 'text-slate-500 dark:text-slate-400 font-normal'
-                                                    }`}
+                                                    onClick={() => {
+                                                        const d = new Date(attendanceDate);
+                                                        d.setDate(d.getDate() - 1);
+                                                        setAttendanceDate(d.toISOString().split('T')[0]);
+                                                    }}
+                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#21262D] transition-colors"
+                                                    title="Previous Day"
                                                 >
-                                                    <Calendar size={12} />
-                                                    <span>3-Row Daily Matrix</span>
+                                                    <ChevronLeft size={16} />
                                                 </button>
+
+                                                {/* Date Selector Display */}
+                                                <div className="flex-1 min-w-0">
+                                                    <MobileDatePicker
+                                                        value={attendanceDate}
+                                                        onChange={(val) => setAttendanceDate(val)}
+                                                    />
+                                                </div>
+
+                                                {/* Next Day */}
                                                 <button
                                                     type="button"
-                                                    onClick={() => setLedgerViewMode('summary')}
-                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
-                                                        ledgerViewMode === 'summary'
-                                                            ? 'bg-indigo-600 text-white shadow-xs font-medium'
-                                                            : 'text-slate-500 dark:text-slate-400 font-normal'
-                                                    }`}
+                                                    onClick={() => {
+                                                        const d = new Date(attendanceDate);
+                                                        d.setDate(d.getDate() + 1);
+                                                        setAttendanceDate(d.toISOString().split('T')[0]);
+                                                    }}
+                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#21262D] transition-colors"
+                                                    title="Next Day"
                                                 >
-                                                    <DollarSign size={12} />
-                                                    <span>Summary Cards</span>
+                                                    <ChevronRight size={16} />
+                                                </button>
+
+                                                {/* Toggle Search/Filter */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAttendanceSearch(prev => !prev)}
+                                                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                                        showAttendanceSearch || attendanceSearch || attendanceRoleFilter !== 'All'
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50'
+                                                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#21262D]'
+                                                    }`}
+                                                    title="Search & Role Filter"
+                                                >
+                                                    <Search size={16} />
+                                                </button>
+
+                                                {/* Quick Borrow Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowBorrowModal(true)}
+                                                    className="px-2 py-1 rounded-lg border border-emerald-500/60 text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 text-[10px] font-semibold flex items-center gap-1 shrink-0 cursor-pointer hover:bg-emerald-100/50 transition-colors"
+                                                >
+                                                    <UserPlus size={12} />
+                                                    <span>+ Borrow</span>
                                                 </button>
                                             </div>
 
-                                            {ledgerViewMode === 'matrix' ? (
-                                                <MonthlyDetailedMatrix
-                                                    siteId={selectedSite ? selectedSite.site_id : 'All'}
-                                                    month={financeMonth}
-                                                    siteName={selectedSite?.site_name}
-                                                    onOpenAdvance={handleOpenAdvance}
-                                                    onOpenPayout={handleOpenPayout}
-                                                />
-                                            ) : (
-                                                <>
-                                                    <div className="bg-white dark:bg-github-dark-subtle p-3 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm flex flex-col gap-2">
-                                                         <div className="flex gap-2">
-                                                             <div className="flex-1">
-                                                                 <MinimalSelect
-                                                                     options={[
-                                                                         { value: '', label: 'All Roles' },
-                                                                         ...((() => {
-                                                                             const seen = new Map();
-                                                                             labours.forEach(l => {
-                                                                                 const r = (l.role || '').trim();
-                                                                                 if (r) {
-                                                                                     const key = r.toLowerCase();
-                                                                                     if (!seen.has(key)) seen.set(key, r);
-                                                                                 }
-                                                                             });
-                                                                             return [...seen.values()].sort();
-                                                                         })().map(r => ({ value: r, label: r })))
-                                                                     ]}
-                                                                     value={financeRoleFilter}
-                                                                     onChange={(val) => setFinanceRoleFilter(val)}
-                                                                     variant="input"
-                                                                     size="sm"
-                                                                     triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl font-medium"
-                                                                 />
-                                                             </div>
-                                                             <div className="shrink-0">
-                                                                 <MonthPicker
-                                                                     value={financeMonth}
-                                                                     onChange={(val) => setFinanceMonth(val)}
-                                                                     compact={true}
-                                                                 />
-                                                             </div>
-                                                         </div>
+                                            {/* 2. Expandable Search & Role Filter Bar */}
+                                            {(showAttendanceSearch || attendanceSearch || attendanceRoleFilter !== 'All') && (
+                                                <div className="p-2.5 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                                                    <div className="relative flex-1">
+                                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                                                        <input
+                                                            type="text"
+                                                            value={attendanceSearch}
+                                                            onChange={(e) => setAttendanceSearch(e.target.value)}
+                                                            placeholder="Search workers..."
+                                                            className="w-full pl-7 pr-6 py-1.5 bg-slate-50 dark:bg-[#0D1117] border border-slate-200 dark:border-[#30363D] rounded-lg text-[11px] text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none"
+                                                        />
+                                                        {attendanceSearch && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAttendanceSearch('')}
+                                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        )}
                                                     </div>
+                                                    <div className="w-32">
+                                                        <MinimalSelect
+                                                            options={[
+                                                                { value: 'All', label: 'All Roles' },
+                                                                ...Array.from(new Set(attendanceRoster.map(r => r.role).filter(Boolean))).map(r => ({ value: r, label: r }))
+                                                            ]}
+                                                            value={attendanceRoleFilter}
+                                                            onChange={(val) => setAttendanceRoleFilter(val)}
+                                                            variant="input"
+                                                            size="sm"
+                                                            triggerClassName="w-full justify-between py-1 px-2 rounded-lg text-[10px] font-medium"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
 
-                                                    <div className="grid gap-3">
-                                                        {financeSummary.filter(row => row.site_id === selectedSite.site_id && (!financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase())).length === 0 ? (
-                                                            <div className="p-10 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 bg-white dark:bg-github-dark-subtle">
-                                                                No finances ledger for workers matching filter.
+                                            {/* 3. Interactive Status Filter Pills */}
+                                            {(() => {
+                                                const totalCount = attendanceRoster.length;
+                                                const presentCount = attendanceRoster.filter(r => r.status === 'Present').length;
+                                                const halfCount = attendanceRoster.filter(r => r.status === 'Half Day').length;
+                                                const absentCount = attendanceRoster.filter(r => r.status === 'Absent').length;
+                                                const plCount = attendanceRoster.filter(r => r.status === 'Paid Leave').length;
+                                                const unmarkedCount = attendanceRoster.filter(r => !r.status).length;
+
+                                                const pills = [
+                                                    { id: 'All', label: 'All', count: totalCount, color: '#6366F1' },
+                                                    { id: 'Present', label: 'Present', count: presentCount, color: '#10B981' },
+                                                    { id: 'Half Day', label: 'Half Day', count: halfCount, color: '#F59E0B' },
+                                                    { id: 'Absent', label: 'Absent', count: absentCount, color: '#EF4444' }
+                                                ];
+                                                if (plCount > 0) pills.push({ id: 'Paid Leave', label: 'Leave', count: plCount, color: '#3B82F6' });
+                                                if (unmarkedCount > 0) pills.push({ id: 'Unmarked', label: 'Unmarked', count: unmarkedCount, color: '#8B5CF6' });
+
+                                                return (
+                                                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                                                        {pills.map(p => {
+                                                            const isSelected = attendanceStatusFilter === p.id;
+                                                            return (
+                                                                <button
+                                                                    key={p.id}
+                                                                    type="button"
+                                                                    onClick={() => setAttendanceStatusFilter(p.id)}
+                                                                    className={`px-2.5 py-1 rounded-full text-[10.5px] transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                                                                        isSelected
+                                                                            ? 'text-white font-semibold shadow-2xs'
+                                                                            : 'bg-white dark:bg-[#161B22] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-[#30363D]'
+                                                                    }`}
+                                                                    style={isSelected ? { backgroundColor: p.color } : {}}
+                                                                >
+                                                                    <span
+                                                                        className="w-1.5 h-1.5 rounded-full"
+                                                                        style={{ backgroundColor: isSelected ? '#FFFFFF' : p.color }}
+                                                                    />
+                                                                    <span>{p.label}</span>
+                                                                    <span
+                                                                        className="px-1.5 py-0.2 rounded-full text-[9px] font-bold"
+                                                                        style={{
+                                                                            backgroundColor: isSelected ? 'rgba(255,255,255,0.22)' : `${p.color}1f`,
+                                                                            color: isSelected ? '#FFFFFF' : p.color
+                                                                        }}
+                                                                    >
+                                                                        {p.count}
+                                                                    </span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* 4. Quick Fill Bar (0 Selected) OR Batch Action Bar (>= 1 Selected) */}
+                                            {(() => {
+                                                const filteredRoster = attendanceRoster.filter(r => {
+                                                    if (attendanceRoleFilter !== 'All' && r.role !== attendanceRoleFilter) return false;
+                                                    if (attendanceStatusFilter === 'Present' && r.status !== 'Present') return false;
+                                                    if (attendanceStatusFilter === 'Half Day' && r.status !== 'Half Day') return false;
+                                                    if (attendanceStatusFilter === 'Absent' && r.status !== 'Absent') return false;
+                                                    if (attendanceStatusFilter === 'Paid Leave' && r.status !== 'Paid Leave') return false;
+                                                    if (attendanceStatusFilter === 'Unmarked' && r.status) return false;
+                                                    if (attendanceSearch.trim()) {
+                                                        const q = attendanceSearch.toLowerCase();
+                                                        if (!r.name?.toLowerCase().includes(q) && !r.role?.toLowerCase().includes(q)) return false;
+                                                    }
+                                                    return true;
+                                                });
+
+                                                const hasSelection = selectedRosterIds.size > 0;
+                                                const allVisibleSelected = filteredRoster.length > 0 && filteredRoster.every(r => selectedRosterIds.has(r.labour_id || r.labourId));
+                                                const unmarkedCount = filteredRoster.filter(r => !r.status).length;
+
+                                                return (
+                                                    <div className={`p-2 rounded-xl border transition-all ${
+                                                        hasSelection
+                                                            ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800/40'
+                                                            : 'bg-white dark:bg-[#161B22] border-slate-200 dark:border-[#30363D]'
+                                                    }`}>
+                                                        {hasSelection ? (
+                                                            /* BATCH ACTIONS (N SELECTED) */
+                                                            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                                                                <span className="px-2 py-1 rounded-md bg-indigo-600 text-white font-bold text-[10px] flex items-center gap-1 shrink-0">
+                                                                    <Check size={11} strokeWidth={3} />
+                                                                    <span>{selectedRosterIds.size} Selected</span>
+                                                                </span>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => batchSetStatus('Present')}
+                                                                    className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[10px] shrink-0 transition-colors"
+                                                                >
+                                                                    Set Present
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => batchSetStatus('Half Day')}
+                                                                    className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[10px] shrink-0 transition-colors"
+                                                                >
+                                                                    Set Half Day
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => batchSetStatus('Absent')}
+                                                                    className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[10px] shrink-0 transition-colors"
+                                                                >
+                                                                    Set Absent
+                                                                </button>
+
+                                                                {/* Batch OT Stepper */}
+                                                                <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#0D1117] border border-slate-200 dark:border-[#30363D] shrink-0">
+                                                                    <span className="text-[9.5px] font-medium text-slate-500 dark:text-slate-400">OT:</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => batchAdjustOvertime(-0.5)}
+                                                                        className="w-5 h-5 flex items-center justify-center rounded bg-white dark:bg-[#21262D] text-slate-700 dark:text-white font-bold text-xs"
+                                                                    >
+                                                                        -
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => batchAdjustOvertime(+0.5)}
+                                                                        className="w-5 h-5 flex items-center justify-center rounded bg-white dark:bg-[#21262D] text-slate-700 dark:text-white font-bold text-xs"
+                                                                    >
+                                                                        +
+                                                                    </button>
+                                                                </div>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedRosterIds(new Set())}
+                                                                    className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 text-[10px] font-medium shrink-0 ml-auto px-1"
+                                                                >
+                                                                    Deselect All
+                                                                </button>
                                                             </div>
                                                         ) : (
-                                                    financeSummary
-                                                        .filter(row => row.site_id === selectedSite.site_id && (!financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase()))
-                                                        .map(row => {
-                                                            const advanceAlert = row.advances_taken > row.accrued_credit;
-                                                            return (                                                                 <div key={row.labour_id} className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm space-y-3">
-                                                                    <div className="flex justify-between items-start">
-                                                                        <div className="cursor-pointer" onClick={() => handleViewHistory(row)}>
-                                                                            <h4 className="font-semibold text-slate-800 dark:text-white text-xs">{row.name}</h4>
-                                                                            <span className="text-[9px] text-slate-450 dark:text-github-dark-muted block font-mono">{row.role}</span>
-                                                                        </div>
+                                                            /* QUICK FILL BAR (0 SELECTED) */
+                                                            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-[10px]">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleSelectAllVisible(filteredRoster)}
+                                                                    className="flex items-center gap-1 text-slate-600 dark:text-slate-300 font-semibold shrink-0 px-1 hover:text-indigo-600"
+                                                                >
+                                                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${
+                                                                        allVisibleSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 dark:border-slate-600'
+                                                                    }`}>
+                                                                        {allVisibleSelected && <Check size={10} strokeWidth={3} />}
                                                                     </div>
-                                                                    <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-github-dark-border/20 p-2 rounded-lg text-center text-[9px]">
-                                                                        <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase font-normal">Earned</span>
-                                                                            <span className="font-semibold text-slate-750 dark:text-github-dark-text">₹{row.accrued_credit}</span>
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase font-normal">Advances</span>
-                                                                            <span className="font-semibold text-amber-600 dark:text-amber-500">₹{row.advances_taken}</span>
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase font-normal">Paid</span>
-                                                                            <span className="font-semibold text-slate-750 dark:text-github-dark-text">₹{row.total_paid}</span>
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="block text-slate-400 dark:text-[#58a6ff] text-[8px] uppercase font-medium">Net Pay</span>
-                                                                            <span className={`font-semibold ${row.net_payable < 0 ? 'text-rose-500' : 'text-indigo-600 dark:text-[#58a6ff]'}`}>₹{row.net_payable}</span>
+                                                                    <span>Select All</span>
+                                                                </button>
+
+                                                                <span className="h-3.5 w-px bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />
+                                                                <span className="text-slate-400 font-medium text-[9.5px] shrink-0">Quick Fill:</span>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => markAllVisible(filteredRoster, 'Present')}
+                                                                    className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 font-semibold shrink-0 hover:bg-emerald-100 transition-colors"
+                                                                >
+                                                                    All Present
+                                                                </button>
+
+                                                                {unmarkedCount > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => markUnmarkedVisible(filteredRoster, 'Present')}
+                                                                        className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40 font-semibold shrink-0 hover:bg-indigo-100 transition-colors"
+                                                                    >
+                                                                        Unmarked ({unmarkedCount})
+                                                                    </button>
+                                                                )}
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => markAllVisible(filteredRoster, 'Absent')}
+                                                                    className="px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40 font-semibold shrink-0 hover:bg-rose-100 transition-colors"
+                                                                >
+                                                                    All Absent
+                                                                </button>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => resetAllVisible(filteredRoster)}
+                                                                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center gap-0.5 shrink-0 px-1 font-medium"
+                                                                >
+                                                                    <Undo2 size={11} />
+                                                                    <span>Reset</span>
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* 5. Attendance Roster Items List */}
+                                            {attendanceLoading ? (
+                                                <div className="py-8 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D]">
+                                                    <LoadingScreen size="sm" message="Loading attendance roster..." fullScreen={false} />
+                                                </div>
+                                            ) : attendanceRoster.length === 0 ? (
+                                                <div className="p-8 text-center bg-white dark:bg-[#161B22] rounded-xl border border-dashed border-slate-200 dark:border-[#30363D] space-y-2">
+                                                    <Users className="mx-auto text-slate-300 dark:text-slate-600" size={30} />
+                                                    <p className="text-slate-500 dark:text-slate-400">No workers assigned to this site.</p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowBorrowModal(true)}
+                                                        className="text-indigo-600 dark:text-indigo-400 text-xs font-semibold hover:underline"
+                                                    >
+                                                        + Add or Borrow Worker to Roster
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2.5">
+                                                    {attendanceRoster
+                                                        .filter(r => {
+                                                            if (attendanceRoleFilter !== 'All' && r.role !== attendanceRoleFilter) return false;
+                                                            if (attendanceStatusFilter === 'Present' && r.status !== 'Present') return false;
+                                                            if (attendanceStatusFilter === 'Half Day' && r.status !== 'Half Day') return false;
+                                                            if (attendanceStatusFilter === 'Absent' && r.status !== 'Absent') return false;
+                                                            if (attendanceStatusFilter === 'Paid Leave' && r.status !== 'Paid Leave') return false;
+                                                            if (attendanceStatusFilter === 'Unmarked' && r.status) return false;
+                                                            if (attendanceSearch.trim()) {
+                                                                const q = attendanceSearch.toLowerCase();
+                                                                if (!r.name?.toLowerCase().includes(q) && !r.role?.toLowerCase().includes(q)) return false;
+                                                            }
+                                                            return true;
+                                                        })
+                                                        .map(item => {
+                                                            const labourId = item.labour_id || item.labourId;
+                                                            const isChecked = selectedRosterIds.has(labourId);
+                                                            const isFixedSalary = (item.wage_type || item.wageType || '').toLowerCase().includes('fixed');
+                                                            const isPresent = item.status === 'Present';
+
+                                                            return (
+                                                                <div
+                                                                    key={labourId}
+                                                                    className={`p-3 rounded-xl border transition-all ${
+                                                                        isChecked
+                                                                            ? 'bg-indigo-50/30 dark:bg-indigo-950/20 border-indigo-300 dark:border-indigo-700/60 shadow-xs'
+                                                                            : 'bg-white dark:bg-[#161B22] border-slate-200 dark:border-[#30363D] shadow-2xs'
+                                                                    }`}
+                                                                >
+                                                                    {/* Row 1: Checkbox + Worker Info + Badges */}
+                                                                    <div className="flex items-start gap-2.5">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isChecked}
+                                                                            onChange={() => toggleSelectRosterItem(labourId)}
+                                                                            className="mt-0.5 rounded text-indigo-600 cursor-pointer"
+                                                                        />
+                                                                        <div className="min-w-0 flex-1 space-y-1">
+                                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                                                                    {item.name}
+                                                                                </h4>
+                                                                                {item.is_borrowed && (
+                                                                                    <span className="px-1.5 py-0.2 rounded text-[8px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40 uppercase">
+                                                                                        Added
+                                                                                    </span>
+                                                                                )}
+                                                                                {!item.status && (
+                                                                                    <span className="px-1.5 py-0.2 rounded text-[8px] font-medium bg-slate-100 dark:bg-[#21262D] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-[#30363D]">
+                                                                                        Unmarked
+                                                                                    </span>
+                                                                                )}
+                                                                                {item.is_scheduled_multi_site && (
+                                                                                    <span className="px-1.5 py-0.2 rounded text-[8px] font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/60 dark:border-purple-800/40 uppercase">
+                                                                                        Multi-Site
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+
+                                                                            <div className="flex items-center gap-2 text-[9.5px] text-slate-500 dark:text-[#8B949E] flex-wrap">
+                                                                                <SkillBadge skill={item.role} />
+                                                                                <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-semibold ${
+                                                                                    isFixedSalary
+                                                                                        ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400'
+                                                                                        : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
+                                                                                }`}>
+                                                                                    {isFixedSalary ? 'Fixed Salary' : 'Daily Wage'}
+                                                                                </span>
+                                                                                <span>OT: ₹{Number(item.overtime_pay_per_hour || item.overtimePayPerHour || 0)}/h</span>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
 
-                                                                    <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-github-dark-border/40 mt-1">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="text-[9px] text-slate-550 dark:text-github-dark-muted font-medium">
-                                                                                ₹{row.monthly_salary}/day • ₹{Number(row.overtime_pay_per_hour || 0)}/hr OT
-                                                                            </span>
-                                                                            {row.net_payable <= 0 ? (
-                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50">
-                                                                                    Settled
+                                                                    {/* Warning Banner if Already Marked */}
+                                                                    {item.already_marked_at && (
+                                                                        <div className="mt-2 p-1.5 px-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-lg flex items-center gap-1.5 text-[9.5px] text-amber-800 dark:text-amber-300 font-medium">
+                                                                            <AlertTriangle size={12} className="shrink-0 text-amber-600" />
+                                                                            <span className="truncate">Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}</span>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Row 2: Tactile Status Buttons */}
+                                                                    <div className="grid grid-cols-3 gap-1.5 mt-2.5">
+                                                                        {[
+                                                                            { id: 'Present', label: 'Present', color: 'bg-emerald-600 text-white shadow-xs', inactive: 'bg-slate-50 dark:bg-[#0D1117] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#30363D]' },
+                                                                            { id: 'Half Day', label: 'Half Day', color: 'bg-amber-500 text-white shadow-xs', inactive: 'bg-slate-50 dark:bg-[#0D1117] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#30363D]' },
+                                                                            { id: 'Absent', label: 'Absent', color: 'bg-rose-600 text-white shadow-xs', inactive: 'bg-slate-50 dark:bg-[#0D1117] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#30363D]' }
+                                                                        ].map(btn => {
+                                                                            const isSelected = item.status === btn.id;
+                                                                            return (
+                                                                                <button
+                                                                                    key={btn.id}
+                                                                                    type="button"
+                                                                                    onClick={() => setItemStatus(labourId, btn.id)}
+                                                                                    className={`py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-95 cursor-pointer text-center ${
+                                                                                        isSelected ? btn.color : btn.inactive
+                                                                                    }`}
+                                                                                >
+                                                                                    {btn.label}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+
+                                                                    {/* Row 3: Overtime Stepper (Visible when Present) */}
+                                                                    {isPresent && (
+                                                                        <div className="mt-2.5 p-2 bg-slate-50 dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-[#30363D] flex items-center justify-between text-xs animate-in fade-in duration-150">
+                                                                            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 font-semibold text-[11px]">
+                                                                                <Clock size={13} className="text-indigo-600 dark:text-indigo-400" />
+                                                                                <span>Overtime:</span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setItemOvertime(labourId, Math.max(0, Number(item.overtime_hours || 0) - 0.5))}
+                                                                                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-white dark:bg-[#21262D] border border-slate-200 dark:border-[#30363D] text-slate-800 dark:text-white font-bold cursor-pointer active:scale-90"
+                                                                                >
+                                                                                    -
+                                                                                </button>
+                                                                                <span className="w-10 text-center font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                                                                    {Number(item.overtime_hours || 0).toFixed(1)}h
                                                                                 </span>
-                                                                            ) : (
-                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/50">
-                                                                                    Pending
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setItemOvertime(labourId, Math.min(12, Number(item.overtime_hours || 0) + 0.5))}
+                                                                                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-white dark:bg-[#21262D] border border-slate-200 dark:border-[#30363D] text-slate-800 dark:text-white font-bold cursor-pointer active:scale-90"
+                                                                                >
+                                                                                    +
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setItemOvertime(labourId, Math.min(12, Number(item.overtime_hours || 0) + 1))}
+                                                                                    className="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50"
+                                                                                >
+                                                                                    +1h
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                </div>
+                                            )}
+
+                                            {/* 6. Bottom Sticky Progress & Save Bar */}
+                                            {attendanceRoster.length > 0 && (
+                                                <div className="sticky bottom-2 z-20 p-2.5 bg-white/95 dark:bg-[#161B22]/95 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-[#30363D] shadow-lg flex items-center justify-between gap-3">
+                                                    {(() => {
+                                                        const total = attendanceRoster.length;
+                                                        const marked = attendanceRoster.filter(r => r.status).length;
+                                                        const isDone = marked === total && total > 0;
+                                                        return (
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                                                                    isDone ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-500'
+                                                                }`}>
+                                                                    {isDone ? <CheckCircle size={15} /> : <Clock size={15} />}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                                                        {marked} / {total} Marked
+                                                                    </p>
+                                                                    <p className={`text-[9.5px] font-medium truncate ${
+                                                                        isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'
+                                                                    }`}>
+                                                                        {isDone ? 'Ready to save' : `${total - marked} remaining`}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSaveAttendance}
+                                                        disabled={savingRoster}
+                                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+                                                    >
+                                                        {savingRoster ? (
+                                                            <>
+                                                                <Loader2 size={14} className="animate-spin" />
+                                                                <span>Saving...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Save size={14} />
+                                                                <span>Save Roster</span>
+                                                                {hasUnsavedChanges && (
+                                                                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* ------------------------------------------------
+                                        SUB-TAB 2: MONTHLY ATTENDANCE GRID
+                                        ------------------------------------------------ */}
+                                    {subTab === 'grid' && (
+                                        <div className="space-y-3 animate-in fade-in duration-150">
+                                            {/* Top Month Selector, View Toggle, Export Excel */}
+                                            <div className="p-2.5 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs flex items-center justify-between gap-1.5">
+                                                {/* Prev Month */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const [y, m] = gridMonth.split('-').map(Number);
+                                                        const d = new Date(y, m - 2, 1);
+                                                        setGridMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                                                    }}
+                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#21262D]"
+                                                >
+                                                    <ChevronLeft size={16} />
+                                                </button>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <MonthPicker
+                                                        value={gridMonth}
+                                                        onChange={(val) => setGridMonth(val)}
+                                                        compact={true}
+                                                    />
+                                                </div>
+
+                                                {/* Next Month */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const [y, m] = gridMonth.split('-').map(Number);
+                                                        const d = new Date(y, m, 1);
+                                                        setGridMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                                                    }}
+                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#21262D]"
+                                                >
+                                                    <ChevronRight size={16} />
+                                                </button>
+
+                                                {/* View Mode Toggle Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsGridTableMode(prev => !prev)}
+                                                    className="p-1.5 rounded-lg border border-slate-200 dark:border-[#30363D] bg-slate-50 dark:bg-[#0D1117] text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-[#21262D] transition-colors"
+                                                    title={isGridTableMode ? "Switch to Cards View" : "Switch to Spreadsheet View"}
+                                                >
+                                                    {isGridTableMode ? <Layers size={15} /> : <FileSpreadsheet size={15} />}
+                                                </button>
+
+                                                {/* Export Excel */}
+                                                <button
+                                                    type="button"
+                                                    onClick={exportMonthlyGridToExcel}
+                                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[10px] flex items-center gap-1 shrink-0 shadow-2xs transition-colors"
+                                                >
+                                                    <Download size={12} />
+                                                    <span>Export</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Role Filter */}
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1">
+                                                    <MinimalSelect
+                                                        options={[
+                                                            { value: 'All', label: 'All Roles' },
+                                                            ...Array.from(new Set(gridData.map(r => r.role).filter(Boolean))).map(r => ({ value: r, label: r }))
+                                                        ]}
+                                                        value={gridRoleFilter}
+                                                        onChange={(val) => setGridRoleFilter(val)}
+                                                        variant="input"
+                                                        size="sm"
+                                                        triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl text-xs font-medium"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Grid View Content */}
+                                            {gridLoading ? (
+                                                <div className="py-8 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D]">
+                                                    <LoadingScreen size="sm" message="Loading monthly grid..." fullScreen={false} />
+                                                </div>
+                                            ) : gridData.length === 0 ? (
+                                                <div className="p-8 text-center bg-white dark:bg-[#161B22] rounded-xl border border-dashed border-slate-200 dark:border-[#30363D] space-y-2">
+                                                    <Calendar className="mx-auto text-slate-300 dark:text-slate-600" size={30} />
+                                                    <p className="text-slate-500 dark:text-slate-400">No attendance logged for {gridMonth}.</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {isGridTableMode ? (
+                                                        /* FULL SPREADSHEET TABLE VIEW */
+                                                        <div className="bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] overflow-x-auto shadow-2xs">
+                                                            {(() => {
+                                                                const [yr, mo] = gridMonth.split('-').map(Number);
+                                                                const daysInMonth = new Date(yr, mo, 0).getDate();
+                                                                const filteredGrid = gridData.filter(r => gridRoleFilter === 'All' || r.role === gridRoleFilter);
+
+                                                                return (
+                                                                    <table className="w-full border-collapse text-[10px] text-center">
+                                                                        <thead>
+                                                                            <tr className="bg-slate-50 dark:bg-[#0D1117] text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-[#30363D]">
+                                                                                <th className="p-2 text-left sticky left-0 bg-slate-50 dark:bg-[#0D1117] z-10 min-w-[100px]">Worker</th>
+                                                                                <th className="p-2 min-w-[60px]">Role</th>
+                                                                                {Array.from({ length: daysInMonth }, (_, i) => (
+                                                                                    <th key={i} className="p-1 min-w-[24px] font-bold">{i + 1}</th>
+                                                                                ))}
+                                                                                <th className="p-2 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-600 font-bold">P</th>
+                                                                                <th className="p-2 bg-amber-50/50 dark:bg-amber-950/20 text-amber-600 font-bold">HD</th>
+                                                                                <th className="p-2 bg-rose-50/50 dark:bg-rose-950/20 text-rose-600 font-bold">A</th>
+                                                                                <th className="p-2 bg-purple-50/50 dark:bg-purple-950/20 text-purple-600 font-bold">OT</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-slate-100 dark:divide-[#21262D]">
+                                                                            {filteredGrid.map((row, idx) => (
+                                                                                <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-[#21262D]/40">
+                                                                                    <td className="p-2 text-left font-bold text-slate-800 dark:text-white sticky left-0 bg-white dark:bg-[#161B22] z-10 truncate max-w-[120px]">
+                                                                                        {row.name}
+                                                                                    </td>
+                                                                                    <td className="p-2 truncate"><SkillBadge skill={row.role} /></td>
+                                                                                    {Array.from({ length: daysInMonth }, (_, i) => {
+                                                                                        const dayNum = i + 1;
+                                                                                        let st = row.days ? row.days[String(dayNum)] || '' : '';
+                                                                                        if (!st) {
+                                                                                            const dt = new Date(yr, mo - 1, dayNum);
+                                                                                            if (dt.getDay() === 0) st = 'WO';
+                                                                                        }
+                                                                                        return (
+                                                                                            <td key={i} className="p-1 font-bold">
+                                                                                                <span className={`inline-block w-5 h-5 leading-5 rounded text-[9px] ${
+                                                                                                    st === 'P' || st === 'Present' ? 'bg-emerald-500/10 text-emerald-600' :
+                                                                                                    st === 'HD' || st === 'Half Day' ? 'bg-amber-500/10 text-amber-600' :
+                                                                                                    st === 'A' || st === 'Absent' ? 'bg-rose-500/10 text-rose-600' :
+                                                                                                    st === 'PL' || st === 'Paid Leave' ? 'bg-blue-500/10 text-blue-600' :
+                                                                                                    st === 'WO' ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' :
+                                                                                                    'text-slate-300 dark:text-slate-600'
+                                                                                                }`}>
+                                                                                                    {st === 'Present' ? 'P' : st === 'Half Day' ? 'HD' : st === 'Absent' ? 'A' : st === 'Paid Leave' ? 'PL' : st || '-'}
+                                                                                                </span>
+                                                                                            </td>
+                                                                                        );
+                                                                                    })}
+                                                                                    <td className="p-2 font-bold text-emerald-600">{row.total_present || row.totalPresent || 0}</td>
+                                                                                    <td className="p-2 font-bold text-amber-600">{row.total_half_days || row.totalHalfDays || 0}</td>
+                                                                                    <td className="p-2 font-bold text-rose-600">{row.total_absent || row.totalAbsent || 0}</td>
+                                                                                    <td className="p-2 font-bold text-purple-600">{(row.total_overtime_hours || row.totalOvertimeHours || 0).toFixed(1)}h</td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    ) : (
+                                                        /* MOBILE CARD VIEW WITH HORIZONTAL DAY STRIP */
+                                                        <div className="space-y-2.5">
+                                                            {(() => {
+                                                                const [yr, mo] = gridMonth.split('-').map(Number);
+                                                                const daysInMonth = new Date(yr, mo, 0).getDate();
+                                                                const filteredGrid = gridData.filter(r => gridRoleFilter === 'All' || r.role === gridRoleFilter);
+
+                                                                return filteredGrid.map((row, idx) => (
+                                                                    <div
+                                                                        key={idx}
+                                                                        className="p-3 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs space-y-2"
+                                                                    >
+                                                                        {/* Card Header: Name & Role */}
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                                                                {row.name}
+                                                                            </h4>
+                                                                            <SkillBadge skill={row.role} />
+                                                                        </div>
+
+                                                                        {/* Mini KPI badges row */}
+                                                                        <div className="flex items-center gap-1.5 flex-wrap text-[9px] font-bold">
+                                                                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50">
+                                                                                P: {row.total_present || row.totalPresent || 0}
+                                                                            </span>
+                                                                            <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/50">
+                                                                                HD: {row.total_half_days || row.totalHalfDays || 0}
+                                                                            </span>
+                                                                            <span className="px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200/50">
+                                                                                A: {row.total_absent || row.totalAbsent || 0}
+                                                                            </span>
+                                                                            {(row.total_paid_leaves || row.totalPaidLeaves || 0) > 0 && (
+                                                                                <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border border-blue-200/50">
+                                                                                    PL: {row.total_paid_leaves || row.totalPaidLeaves || 0}
                                                                                 </span>
                                                                             )}
+                                                                            <span className="px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200/50 ml-auto">
+                                                                                OT: {(row.total_overtime_hours || row.totalOvertimeHours || 0).toFixed(1)}h
+                                                                            </span>
                                                                         </div>
-                                                                        <div className="flex gap-1.5">
-                                                                            <button onClick={() => handleOpenAdvance(row)} className="px-2 py-1 text-[9px] font-medium bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors">Advance</button>
+
+                                                                        {/* Horizontal Day-by-Day Scrollable Strip */}
+                                                                        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
+                                                                            {Array.from({ length: daysInMonth }, (_, d) => {
+                                                                                const dayNum = d + 1;
+                                                                                let st = row.days ? row.days[String(dayNum)] || '' : '';
+                                                                                if (!st) {
+                                                                                    const dt = new Date(yr, mo - 1, dayNum);
+                                                                                    if (dt.getDay() === 0) st = 'WO';
+                                                                                }
+
+                                                                                let bg = 'bg-slate-50 dark:bg-[#0D1117] text-slate-400 border-slate-200 dark:border-[#30363D]';
+                                                                                if (st === 'P' || st === 'Present') bg = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800/60 font-bold';
+                                                                                else if (st === 'HD' || st === 'Half Day') bg = 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-800/60 font-bold';
+                                                                                else if (st === 'A' || st === 'Absent') bg = 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800/60 font-bold';
+                                                                                else if (st === 'PL' || st === 'Paid Leave') bg = 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-800/60 font-bold';
+                                                                                else if (st === 'WO') bg = 'bg-slate-100 dark:bg-[#21262D] text-slate-400 border-transparent';
+
+                                                                                return (
+                                                                                    <div
+                                                                                        key={d}
+                                                                                        className={`w-7 h-10 rounded-lg border flex flex-col items-center justify-center shrink-0 ${bg}`}
+                                                                                    >
+                                                                                        <span className="text-[7.5px] text-slate-400 font-medium">{dayNum}</span>
+                                                                                        <span className="text-[9px]">
+                                                                                            {st === 'Present' ? 'P' : st === 'Half Day' ? 'HD' : st === 'Absent' ? 'A' : st === 'Paid Leave' ? 'PL' : st || '-'}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                ));
+                                                            })()}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Legend */}
+                                                    <div className="p-2.5 bg-slate-50 dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-[#30363D] flex items-center justify-center gap-3 text-[9.5px] font-medium text-slate-500 dark:text-slate-400 flex-wrap">
+                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> P = Present</span>
+                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> HD = Half Day</span>
+                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500" /> A = Absent</span>
+                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> PL = Paid Leave</span>
+                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-400" /> WO = Week Off</span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* ------------------------------------------------
+                                        SUB-TAB 3: FINANCES & SALARY CREDIT
+                                        ------------------------------------------------ */}
+                                    {subTab === 'finances' && (
+                                        <div className="space-y-3 animate-in fade-in duration-150">
+                                            {/* 4 Financial KPI Stat Cards */}
+                                            {(() => {
+                                                const filteredFinances = financeSummary.filter(f => financeRoleFilter === 'All' || f.role === financeRoleFilter);
+                                                let totalAccrued = 0;
+                                                let totalAdvances = 0;
+                                                let totalNet = 0;
+                                                let totalPaid = 0;
+
+                                                filteredFinances.forEach(f => {
+                                                    totalAccrued += Number(f.accrued_credit || f.accruedCredit || 0);
+                                                    totalAdvances += Number(f.advances_taken || f.totalAdvance || 0);
+                                                    totalNet += Number(f.net_payable || f.netPayable || 0);
+                                                    totalPaid += Number(f.total_paid || f.paidAmount || 0);
+                                                });
+
+                                                return (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <LabourStatCard
+                                                            title="Total Accrued"
+                                                            value={`₹${Math.round(totalAccrued).toLocaleString()}`}
+                                                            icon={Wallet}
+                                                            iconColor="#6366F1"
+                                                        />
+                                                        <LabourStatCard
+                                                            title="Advances Paid"
+                                                            value={`₹${Math.round(totalAdvances).toLocaleString()}`}
+                                                            icon={DollarSign}
+                                                            iconColor="#F59E0B"
+                                                        />
+                                                        <LabourStatCard
+                                                            title="Net Payable"
+                                                            value={`₹${Math.round(totalNet).toLocaleString()}`}
+                                                            icon={Clock}
+                                                            iconColor="#10B981"
+                                                        />
+                                                        <LabourStatCard
+                                                            title="Total Paid"
+                                                            value={`₹${Math.round(totalPaid).toLocaleString()}`}
+                                                            icon={CheckCircle2}
+                                                            iconColor="#3B82F6"
+                                                        />
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Month Selector & Role Filter & Export Payroll Button */}
+                                            <div className="p-2.5 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs flex items-center justify-between gap-2">
+                                                <div className="w-28">
+                                                    <MonthPicker
+                                                        value={financeMonth}
+                                                        onChange={(val) => setFinanceMonth(val)}
+                                                        compact={true}
+                                                    />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <MinimalSelect
+                                                        options={[
+                                                            { value: 'All', label: 'All Roles' },
+                                                            ...Array.from(new Set(financeSummary.map(f => f.role).filter(Boolean))).map(r => ({ value: r, label: r }))
+                                                        ]}
+                                                        value={financeRoleFilter}
+                                                        onChange={(val) => setFinanceRoleFilter(val)}
+                                                        variant="input"
+                                                        size="sm"
+                                                        triggerClassName="w-full justify-between py-1.5 px-2 rounded-xl text-xs font-medium"
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={exportPayoutsToExcel}
+                                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[10px] flex items-center gap-1 shrink-0 shadow-2xs transition-colors"
+                                                >
+                                                    <Download size={12} />
+                                                    <span>Payroll</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Financial Ledger Cards */}
+                                            {financeLoading ? (
+                                                <div className="py-8 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D]">
+                                                    <LoadingScreen size="sm" message="Loading financial ledger..." fullScreen={false} />
+                                                </div>
+                                            ) : financeSummary.length === 0 ? (
+                                                <div className="p-8 text-center bg-white dark:bg-[#161B22] rounded-xl border border-dashed border-slate-200 dark:border-[#30363D] space-y-2">
+                                                    <Wallet className="mx-auto text-slate-300 dark:text-slate-600" size={30} />
+                                                    <p className="text-slate-500 dark:text-slate-400">No financial ledger entries for this site.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2.5">
+                                                    {financeSummary
+                                                        .filter(f => financeRoleFilter === 'All' || f.role === financeRoleFilter)
+                                                        .map(row => {
+                                                            const accrued = Number(row.accrued_credit || row.accruedCredit || 0);
+                                                            const advances = Number(row.advances_taken || row.totalAdvance || 0);
+                                                            const net = Number(row.net_payable || row.netPayable || 0);
+                                                            const paid = Number(row.total_paid || row.paidAmount || 0);
+                                                            const isSettled = net <= 0;
+
+                                                            return (
+                                                                <div
+                                                                    key={row.labour_id || row.labourId}
+                                                                    className="p-3 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs space-y-2.5"
+                                                                >
+                                                                    <div className="flex items-start justify-between gap-2">
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                                                                {row.name}
+                                                                            </h4>
+                                                                            <p className="text-[10px] text-slate-500 dark:text-[#8B949E] mt-0.5">
+                                                                                ₹{row.monthly_salary}/day • ₹{Number(row.overtime_pay_per_hour || 0)}/hr OT
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                                            <SkillBadge skill={row.role} />
+                                                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold uppercase tracking-wider ${
+                                                                                isSettled
+                                                                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200/50'
+                                                                                    : 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200/50'
+                                                                            }`}>
+                                                                                {isSettled ? 'Settled' : 'Pending'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* 4-Metric Grid */}
+                                                                    <div className="grid grid-cols-4 gap-1 p-2 bg-slate-50 dark:bg-[#0D1117] rounded-lg border border-slate-200/60 dark:border-[#30363D]/60 text-center">
+                                                                        <div>
+                                                                            <span className="block text-[8px] font-semibold text-slate-400 uppercase tracking-wider">Earned</span>
+                                                                            <span className="font-bold text-[11px] text-indigo-600 dark:text-indigo-400">₹{accrued.toLocaleString()}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="block text-[8px] font-semibold text-slate-400 uppercase tracking-wider">Advances</span>
+                                                                            <span className="font-bold text-[11px] text-amber-600 dark:text-amber-400">₹{advances.toLocaleString()}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="block text-[8px] font-semibold text-slate-400 uppercase tracking-wider">Net Pay</span>
+                                                                            <span className={`font-bold text-[11px] ${net < 0 ? 'text-rose-600' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                                                                ₹{net.toLocaleString()}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="block text-[8px] font-semibold text-slate-400 uppercase tracking-wider">Paid</span>
+                                                                            <span className="font-bold text-[11px] text-blue-600 dark:text-blue-400">₹{paid.toLocaleString()}</span>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Action Buttons */}
+                                                                    <div className="flex items-center justify-between pt-1 text-xs">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleViewHistory(row)}
+                                                                            className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                                                                        >
+                                                                            <History size={12} />
+                                                                            <span>History</span>
+                                                                        </button>
+                                                                        <div className="flex items-center gap-1.5">
                                                                             <button
-                                                                                onClick={() => handleOpenPayout(row)}
-                                                                                disabled={row.net_payable <= 0}
-                                                                                className={`px-2 py-1 text-[9px] font-medium border rounded-lg transition-colors ${row.net_payable <= 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50' : 'bg-indigo-600 text-white border-transparent'}`}
+                                                                                type="button"
+                                                                                onClick={() => handleOpenAdvance(row)}
+                                                                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40 text-[10px] font-semibold transition-colors cursor-pointer"
                                                                             >
-                                                                                Release
+                                                                                Advance
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleOpenPayout(row)}
+                                                                                disabled={net <= 0}
+                                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors cursor-pointer ${
+                                                                                    net <= 0
+                                                                                        ? 'bg-slate-100 dark:bg-[#21262D] text-slate-400 border border-slate-200 dark:border-[#30363D] cursor-not-allowed'
+                                                                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs'
+                                                                                }`}
+                                                                            >
+                                                                                Settle
                                                                             </button>
                                                                         </div>
                                                                     </div>
                                                                 </div>
                                                             );
-                                                        })
-                                                )}
-                                            </div>
-                                        </>
+                                                        })}
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
-                                </div>
-                            )}
                                 </div>
                             )
                         )}
 
-                        {/* ==========================================
-                            TAB 2: LABOUR DIRECTORY
-                            ========================================== */}
+                        {/* ====================================================
+                            TAB 2: WORKER DIRECTORY
+                            ==================================================== */}
                         {activeTab === 'directory' && (
-                            <div className="space-y-3 animate-in fade-in duration-150">
-                                <div className="flex flex-col gap-2.5 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm">
-                                    <span className="font-semibold text-slate-700 dark:text-white block">Labour Directory</span>
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search worker by name or role..."
-                                            value={labourSearch}
-                                            onChange={(e) => setLabourSearch(e.target.value)}
-                                            className="pl-8 pr-4 py-2 w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl text-xs text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
-                                        />
-                                    </div>
-                                    <div className="flex gap-2.5">
-                                        <MinimalSelect
-                                            options={[
-                                                { value: 'All', label: 'All Sites' },
-                                                { value: 'Unassigned', label: 'Unassigned' },
-                                                ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
-                                            ]}
-                                            value={labourSiteFilter}
-                                            onChange={(val) => setLabourSiteFilter(val)}
-                                            variant="input"
-                                            size="sm"
-                                            triggerClassName="flex-1 justify-between py-1.5 px-3 rounded-xl font-medium"
-                                        />
-                                        <MinimalSelect
-                                            options={[
-                                                { value: '', label: 'All Roles' },
-                                                ...((() => {
-                                                    const seen = new Map();
-                                                    labours.forEach(l => {
-                                                        const r = (l.role || '').trim();
-                                                        if (r) {
-                                                            const key = r.toLowerCase();
-                                                            if (!seen.has(key)) seen.set(key, r);
-                                                        }
-                                                    });
-                                                    return [...seen.values()].sort();
-                                                })().map(r => ({ value: r, label: r })))
-                                            ]}
-                                            value={labourRoleFilter}
-                                            onChange={(val) => setLabourRoleFilter(val)}
-                                            variant="input"
-                                            size="sm"
-                                            triggerClassName="flex-1 justify-between py-1.5 px-3 rounded-xl font-medium"
-                                        />
-                                    </div>
-                                    <div className="flex gap-2 justify-end border-t border-slate-100 dark:border-github-dark-border/40 pt-2.5">
-                                        <button
-                                            onClick={() => {
-                                                setSelectedLabourIds([]);
-                                                setBulkSourceSiteId('All');
-                                                setBulkDestinationSiteId('');
-                                                setShowBulkTransferModal(true);
-                                            }}
-                                            className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl font-medium flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
-                                        >
-                                            <Building size={12} /> Bulk Move
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setParsedLabours([]);
-                                                setCsvPreviewError('');
-                                                setShowBulkLabourModal(true);
-                                            }}
-                                            className="px-2.5 py-1.5 bg-emerald-600 text-white rounded-xl font-medium flex items-center gap-1 text-[9px] shrink-0"
-                                        >
-                                            <Upload size={12} /> Bulk Add
-                                        </button>
-                                        <button
-                                            onClick={() => { setEditingLabour(null); setLabourForm({ name: '', phone: '', sex: 'Male', role: '', wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '' }); setShowLabourModal(true); }}
-                                            className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-xl font-medium flex items-center gap-1 text-[9px] shrink-0"
-                                        >
-                                            <Plus size={12} /> Add Worker
-                                        </button>
-                                    </div>
+                            <div className="space-y-3 animate-in fade-in duration-200">
+                                {/* Action Buttons Bar (+ Add Worker, Transfer, Bulk Upload) */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingLabour(null);
+                                            setLabourForm({
+                                                name: '', phone: '', sex: 'Male', role: '',
+                                                wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
+                                                overtime_pay_per_hour: '0', status: 'Active'
+                                            });
+                                            setShowLabourModal(true);
+                                        }}
+                                        className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold flex items-center justify-center gap-1.5 text-xs shadow-xs cursor-pointer transition-all active:scale-95"
+                                    >
+                                        <Plus size={14} strokeWidth={2.5} />
+                                        <span>Add Worker</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedTransferLabourIds([]);
+                                            setBulkSourceSiteId('All');
+                                            setBulkDestinationSiteId('');
+                                            setShowBulkTransferModal(true);
+                                        }}
+                                        className="flex-1 py-2 bg-white dark:bg-[#161B22] hover:bg-slate-50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60 rounded-xl font-semibold flex items-center justify-center gap-1.5 text-xs shadow-2xs cursor-pointer transition-all"
+                                    >
+                                        <ArrowRight size={14} />
+                                        <span>Transfer</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setParsedLabours([]);
+                                            setShowBulkLabourModal(true);
+                                        }}
+                                        className="p-2 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] rounded-xl text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-colors"
+                                        title="Bulk Upload Excel"
+                                    >
+                                        <Upload size={16} />
+                                    </button>
                                 </div>
 
-                                <div className="grid gap-2">
-                                    {labours
-                                        .filter(lab => {
-                                            const matchesSearch = lab.name.toLowerCase().includes(labourSearch.toLowerCase()) ||
-                                                lab.role.toLowerCase().includes(labourSearch.toLowerCase());
-                                            const matchesRole = !labourRoleFilter || lab.role.toLowerCase() === labourRoleFilter.toLowerCase();
-                                            let matchesSite = true;
-                                            if (labourSiteFilter === 'Unassigned') matchesSite = lab.site_id === null;
-                                            else if (labourSiteFilter !== 'All') matchesSite = lab.site_id === Number(labourSiteFilter);
-                                            return matchesSearch && matchesRole && matchesSite;
-                                        })
-                                        .map(lab => (
-                                            <div key={lab.labour_id} className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm flex items-center justify-between">
-                                                <div className="cursor-pointer" onClick={() => handleViewHistory(lab)}>
-                                                    <h4 className="font-semibold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
-                                                        <span>{lab.name}</span>
-                                                        <span className="text-[8px] text-indigo-500 font-medium uppercase bg-indigo-50 dark:bg-indigo-950/20 px-1 rounded">History</span>
-                                                    </h4>
-                                                    <p className="text-[9px] text-slate-500 dark:text-github-dark-muted mt-0.5">{lab.role} | ₹{lab.monthly_salary}/day • ₹{Number(lab.overtime_pay_per_hour || 0)}/hr OT</p>
-                                                    <p className="text-[9px] text-slate-500 dark:text-github-dark-muted mt-0.5">{lab.phone || 'No phone'} | {lab.sex}</p>
-                                                    <p className="text-[9px] text-slate-500 dark:text-github-dark-muted mt-1 uppercase flex items-center gap-1 font-medium">
-                                                        <Building size={10} /> {lab.site_name || 'Unassigned'}
-                                                    </p>
+                                {/* Search Bar */}
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                    <input
+                                        type="text"
+                                        value={directorySearch}
+                                        onChange={(e) => setDirectorySearch(e.target.value)}
+                                        placeholder="Search name, phone or role..."
+                                        className="w-full pl-8 pr-7 py-2 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] rounded-xl text-xs text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+                                    />
+                                    {directorySearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setDirectorySearch('')}
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Filters Row (Site & Role Dropdowns) */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <MinimalSelect
+                                        options={[
+                                            { value: 'All', label: 'All Sites' },
+                                            { value: 'Unassigned', label: 'Unassigned' },
+                                            ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                        ]}
+                                        value={directorySiteFilter}
+                                        onChange={(val) => setDirectorySiteFilter(val)}
+                                        variant="input"
+                                        size="sm"
+                                        triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl text-xs font-medium"
+                                    />
+                                    <MinimalSelect
+                                        options={[
+                                            { value: 'All', label: 'All Roles' },
+                                            ...Array.from(new Set(labours.map(l => l.role).filter(Boolean))).map(r => ({ value: r, label: r }))
+                                        ]}
+                                        value={directoryRoleFilter}
+                                        onChange={(val) => setDirectoryRoleFilter(val)}
+                                        variant="input"
+                                        size="sm"
+                                        triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl text-xs font-medium"
+                                    />
+                                </div>
+
+                                {/* Worker Directory Cards List */}
+                                <div className="space-y-2.5">
+                                    {(() => {
+                                        const filteredLabours = labours.filter(w => {
+                                            if (directoryRoleFilter !== 'All' && w.role !== directoryRoleFilter) return false;
+                                            if (directorySiteFilter === 'Unassigned' && (w.site_id !== null && (!w.site_ids || w.site_ids.length > 0))) return false;
+                                            if (directorySiteFilter !== 'All' && directorySiteFilter !== 'Unassigned') {
+                                                const sId = Number(directorySiteFilter);
+                                                if (w.site_id !== sId && (!w.site_ids || !w.site_ids.includes(sId))) return false;
+                                            }
+                                            if (directorySearch.trim()) {
+                                                const q = directorySearch.toLowerCase();
+                                                const matchName = w.name?.toLowerCase().includes(q);
+                                                const matchPhone = w.phone?.toLowerCase().includes(q);
+                                                const matchRole = w.role?.toLowerCase().includes(q);
+                                                if (!matchName && !matchPhone && !matchRole) return false;
+                                            }
+                                            return true;
+                                        });
+
+                                        if (filteredLabours.length === 0) {
+                                            return (
+                                                <div className="p-8 border border-dashed border-slate-200 dark:border-[#30363D] rounded-2xl text-center bg-white dark:bg-[#161B22] space-y-2">
+                                                    <Users className="mx-auto text-slate-300 dark:text-slate-600" size={30} />
+                                                    <p className="text-slate-500 dark:text-slate-400">No worker profiles found matching filter.</p>
                                                 </div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => handleOpenScheduleModal(lab)} className="p-2 text-indigo-500 rounded-xl border border-slate-200 dark:border-github-dark-border"><Calendar size={12} /></button>
-                                                    <button onClick={() => handleEditLabour(lab)} className="p-2 text-slate-400 rounded-xl border border-slate-200 dark:border-github-dark-border"><Edit2 size={12} /></button>
-                                                    <button onClick={() => handleDeleteLabour(lab.labour_id)} className="p-2 text-red-500 rounded-xl border border-slate-200 dark:border-github-dark-border"><Trash2 size={12} /></button>
+                                            );
+                                        }
+
+                                        return filteredLabours.map(worker => {
+                                            const initials = worker.name ? worker.name.charAt(0).toUpperCase() : 'W';
+                                            return (
+                                                <div
+                                                    key={worker.labour_id || worker.labourId}
+                                                    className="p-3 bg-white dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] shadow-2xs space-y-2.5"
+                                                >
+                                                    <div className="flex items-start gap-2.5">
+                                                        {/* Avatar Circle with Gradient */}
+                                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
+                                                            {initials}
+                                                        </div>
+
+                                                        {/* Name & Subtitle Details */}
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center justify-between gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleViewHistory(worker)}
+                                                                    className="font-bold text-xs text-indigo-600 dark:text-indigo-400 hover:underline truncate text-left cursor-pointer"
+                                                                >
+                                                                    {worker.name}
+                                                                </button>
+                                                                <SkillBadge skill={worker.role} />
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 dark:text-[#8B949E] mt-0.5 truncate">
+                                                                Phone: {worker.phone || 'N/A'} • Site: {worker.site_name || 'Unassigned'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Rates & Actions Row */}
+                                                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#30363D]/60 text-xs">
+                                                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 truncate">
+                                                            Wage: ₹{worker.monthly_salary}/day • OT: ₹{Number(worker.overtime_pay_per_hour || 0)}/h
+                                                        </span>
+
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenScheduleModal(worker)}
+                                                                className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg transition-colors"
+                                                                title="Daily Schedule Planner"
+                                                            >
+                                                                <Calendar size={13} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openWageRevisionDialog(worker)}
+                                                                className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors"
+                                                                title="Wage Revision History"
+                                                            >
+                                                                <History size={13} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setEditingLabour(worker);
+                                                                    setLabourForm({
+                                                                        name: worker.name,
+                                                                        phone: worker.phone || '',
+                                                                        sex: worker.sex || 'Male',
+                                                                        role: worker.role,
+                                                                        wage_type: 'Daily Wage',
+                                                                        monthly_salary: worker.monthly_salary,
+                                                                        allowed_leaves: '0',
+                                                                        site_id: worker.site_id?.toString() || '',
+                                                                        overtime_pay_per_hour: worker.overtime_pay_per_hour?.toString() || '0',
+                                                                        status: worker.status || 'Active'
+                                                                    });
+                                                                    setShowLabourModal(true);
+                                                                }}
+                                                                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363D] rounded-lg transition-colors"
+                                                                title="Edit Profile"
+                                                            >
+                                                                <Edit2 size={13} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleConfirmDeleteLabour(worker.labour_id || worker.labourId)}
+                                                                className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors"
+                                                                title="Delete Worker"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        });
+                                    })()}
                                 </div>
                             </div>
                         )}
                     </>
                 )}
 
-                {/* BOTTOM-SHEET: DAILY SCHEDULE PLANNER */}
+                {/* ============================================================
+                    ALL MODAL BOTTOM-SHEETS (SLIDING UP FROM BOTTOM OF SCREEN)
+                    ============================================================ */}
+
+                {/* BOTTOM-SHEET 1: ADD / EDIT SITE */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showSiteModal && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowSiteModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                                                {editingSite ? 'Edit Construction Site' : 'Create Construction Site'}
+                                            </h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
+                                                Site Configuration Profile
+                                            </span>
+                                        </div>
+                                        <button onClick={() => setShowSiteModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <form onSubmit={handleSaveSite} className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Site Name *</label>
+                                            <input
+                                                type="text"
+                                                value={siteForm.site_name}
+                                                onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                                                required
+                                                placeholder="e.g. Skyline Towers Phase 2"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Location Details / Address</label>
+                                            <textarea
+                                                value={siteForm.location_details}
+                                                onChange={(e) => setSiteForm({ ...siteForm, location_details: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                                                rows={2}
+                                                placeholder="Plot 42, Sector 15..."
+                                            />
+                                        </div>
+                                        {editingSite && (
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Site Status</label>
+                                                <MinimalSelect
+                                                    options={[
+                                                        { value: 'Active', label: 'Active' },
+                                                        { value: 'Completed', label: 'Completed' },
+                                                        { value: 'On Hold', label: 'On Hold' }
+                                                    ]}
+                                                    value={siteForm.status}
+                                                    onChange={(val) => setSiteForm({ ...siteForm, status: val })}
+                                                    variant="input"
+                                                    size="sm"
+                                                    triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
+                                                />
+                                            </div>
+                                        )}
+                                        <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-[#30363D]">
+                                            <button type="button" onClick={() => setShowSiteModal(false)} className="flex-1 py-2.5 bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-300 rounded-xl font-semibold">
+                                                Cancel
+                                            </button>
+                                            <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs">
+                                                Save Site
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 2: ADD / EDIT WORKER */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showLabourModal && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowLabourModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[90vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                                                {editingLabour ? 'Edit Worker Profile' : 'Add Labour Worker'}
+                                            </h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
+                                                Workforce Profile Configuration
+                                            </span>
+                                        </div>
+                                        <button onClick={() => setShowLabourModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <form onSubmit={handleSaveLabour} className="flex-1 overflow-y-auto p-5 space-y-3 text-xs">
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Worker Full Name *</label>
+                                            <input
+                                                type="text"
+                                                value={labourForm.name}
+                                                onChange={(e) => setLabourForm({ ...labourForm, name: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                                                required
+                                                placeholder="e.g. Ramesh Kumar"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Phone Number</label>
+                                                <input
+                                                    type="tel"
+                                                    value={labourForm.phone}
+                                                    onChange={(e) => setLabourForm({ ...labourForm, phone: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                                                    placeholder="9876543210"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Sex</label>
+                                                <MinimalSelect
+                                                    options={[
+                                                        { value: 'Male', label: 'Male' },
+                                                        { value: 'Female', label: 'Female' },
+                                                        { value: 'Other', label: 'Other' }
+                                                    ]}
+                                                    value={labourForm.sex}
+                                                    onChange={(val) => setLabourForm({ ...labourForm, sex: val })}
+                                                    variant="input"
+                                                    size="sm"
+                                                    triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Trade / Role *</label>
+                                            <input
+                                                type="text"
+                                                value={labourForm.role}
+                                                onChange={(e) => setLabourForm({ ...labourForm, role: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                                                required
+                                                placeholder="Mason, Electrician, Plumber, Helper..."
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Assigned Base Site</label>
+                                            <MinimalSelect
+                                                options={[
+                                                    { value: '', label: 'Unassigned / Independent' },
+                                                    ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                ]}
+                                                value={labourForm.site_id}
+                                                onChange={(val) => setLabourForm({ ...labourForm, site_id: val })}
+                                                variant="input"
+                                                size="sm"
+                                                triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Daily Wage (INR) *</label>
+                                                <input
+                                                    type="number"
+                                                    value={labourForm.monthly_salary}
+                                                    onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:border-indigo-500 font-mono"
+                                                    required
+                                                    placeholder="600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">OT Pay / Hour (INR)</label>
+                                                <input
+                                                    type="number"
+                                                    value={labourForm.overtime_pay_per_hour}
+                                                    onChange={(e) => setLabourForm({ ...labourForm, overtime_pay_per_hour: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:border-indigo-500 font-mono"
+                                                    placeholder="80"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-[#30363D]">
+                                            <button type="button" onClick={() => setShowLabourModal(false)} className="flex-1 py-2.5 bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-300 rounded-xl font-semibold">
+                                                Cancel
+                                            </button>
+                                            <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs">
+                                                Save Worker
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 3: BORROW / ADD WORKER TO ROSTER */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showBorrowModal && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowBorrowModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">Borrow Worker for Today</h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
+                                                Site: {selectedSite?.site_name}
+                                            </span>
+                                        </div>
+                                        <button onClick={() => setShowBorrowModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <div className="p-4 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                            <input
+                                                type="text"
+                                                value={borrowSearchQuery}
+                                                onChange={(e) => setBorrowSearchQuery(e.target.value)}
+                                                placeholder="Search worker by name or role..."
+                                                className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] rounded-xl text-xs text-slate-800 dark:text-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-2 divide-y divide-slate-100 dark:divide-[#21262D]">
+                                        {labours
+                                            .filter(lab => {
+                                                const inRoster = attendanceRoster.some(r => (r.labour_id || r.labourId) === (lab.labour_id || lab.labourId));
+                                                if (inRoster) return false;
+                                                if (borrowSearchQuery.trim()) {
+                                                    const q = borrowSearchQuery.toLowerCase();
+                                                    return lab.name?.toLowerCase().includes(q) || lab.role?.toLowerCase().includes(q);
+                                                }
+                                                return true;
+                                            })
+                                            .map(lab => (
+                                                <div
+                                                    key={lab.labour_id || lab.labourId}
+                                                    onClick={() => handleBorrowLabour(lab)}
+                                                    className="pt-2 first:pt-0 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-[#161B22] p-2 rounded-xl transition-colors"
+                                                >
+                                                    <div className="min-w-0 flex-1">
+                                                        <h5 className="font-bold text-xs text-slate-900 dark:text-white truncate">{lab.name}</h5>
+                                                        <p className="text-[10px] text-slate-500 dark:text-[#8B949E] mt-0.5 truncate">
+                                                            {lab.role} • Base: {lab.site_name || 'Unassigned'}
+                                                        </p>
+                                                    </div>
+                                                    <span className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 rounded-lg text-[10px] font-semibold shrink-0">
+                                                        + Add
+                                                    </span>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 4: BULK TRANSFER WORKERS */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showBulkTransferModal && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowBulkTransferModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">Bulk Move Workers</h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
+                                                Reallocate to New Construction Site
+                                            </span>
+                                        </div>
+                                        <button onClick={() => setShowBulkTransferModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <form onSubmit={handleExecuteBulkTransfer} className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">From Site</label>
+                                                <MinimalSelect
+                                                    options={[
+                                                        { value: 'All', label: 'All Sites' },
+                                                        { value: 'Unassigned', label: 'Unassigned' },
+                                                        ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                    ]}
+                                                    value={bulkSourceSiteId}
+                                                    onChange={(val) => {
+                                                        setBulkSourceSiteId(val);
+                                                        setSelectedTransferLabourIds([]);
+                                                    }}
+                                                    variant="input"
+                                                    size="sm"
+                                                    triggerClassName="w-full justify-between py-1.5 px-2 rounded-xl text-xs font-medium"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">To Site *</label>
+                                                <MinimalSelect
+                                                    options={[
+                                                        { value: '', label: '-- Choose Destination --' },
+                                                        { value: 'Unassigned', label: 'Unassigned / Independent' },
+                                                        ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                    ]}
+                                                    value={bulkDestinationSiteId}
+                                                    onChange={(val) => setBulkDestinationSiteId(val)}
+                                                    variant="input"
+                                                    size="sm"
+                                                    triggerClassName="w-full justify-between py-1.5 px-2 rounded-xl text-xs font-medium"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                                    Select Workers ({selectedTransferLabourIds.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const available = labours.filter(l => {
+                                                            if (bulkSourceSiteId === 'Unassigned') return l.site_id === null;
+                                                            if (bulkSourceSiteId !== 'All') return l.site_id === Number(bulkSourceSiteId);
+                                                            return true;
+                                                        });
+                                                        if (selectedTransferLabourIds.length === available.length) {
+                                                            setSelectedTransferLabourIds([]);
+                                                        } else {
+                                                            setSelectedTransferLabourIds(available.map(l => l.labour_id || l.labourId));
+                                                        }
+                                                    }}
+                                                    className="text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]"
+                                                >
+                                                    Toggle All
+                                                </button>
+                                            </div>
+                                            <div className="border border-slate-200 dark:border-[#30363D] rounded-xl max-h-48 overflow-y-auto p-2 bg-slate-50 dark:bg-[#161B22] space-y-1 divide-y divide-slate-100 dark:divide-[#21262D]">
+                                                {labours
+                                                    .filter(l => {
+                                                        if (bulkSourceSiteId === 'Unassigned') return l.site_id === null;
+                                                        if (bulkSourceSiteId !== 'All') return l.site_id === Number(bulkSourceSiteId);
+                                                        return true;
+                                                    })
+                                                    .map(lab => {
+                                                        const id = lab.labour_id || lab.labourId;
+                                                        const isChecked = selectedTransferLabourIds.includes(id);
+                                                        return (
+                                                            <label key={id} className="pt-1.5 first:pt-0 flex items-center gap-2 py-1 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => {
+                                                                        setSelectedTransferLabourIds(prev =>
+                                                                            isChecked ? prev.filter(x => x !== id) : [...prev, id]
+                                                                        );
+                                                                    }}
+                                                                    className="rounded text-indigo-600 cursor-pointer"
+                                                                />
+                                                                <span className="font-medium text-xs text-slate-800 dark:text-white truncate">{lab.name}</span>
+                                                                <span className="text-[10px] text-slate-400">({lab.role})</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-[#30363D]">
+                                            <button type="button" onClick={() => setShowBulkTransferModal(false)} className="flex-1 py-2.5 bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-300 rounded-xl font-semibold">
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={selectedTransferLabourIds.length === 0}
+                                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs disabled:opacity-50"
+                                            >
+                                                Transfer ({selectedTransferLabourIds.length})
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 5: LOG SALARY ADVANCE */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showAdvanceModal && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowAdvanceModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold">₹</div>
+                                            <div>
+                                                <h4 className="font-bold text-slate-900 dark:text-white text-sm">Log Salary Advance</h4>
+                                                <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">{advanceForm.name}</span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setShowAdvanceModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <form onSubmit={handleSaveAdvance} className="flex-1 overflow-y-auto p-5 space-y-3 text-xs">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Target Site</label>
+                                                <MinimalSelect
+                                                    options={[
+                                                        { value: 'All', label: 'All Sites' },
+                                                        ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                    ]}
+                                                    value={advanceForm.site_id}
+                                                    onChange={(val) => setAdvanceForm({ ...advanceForm, site_id: val })}
+                                                    variant="input"
+                                                    size="sm"
+                                                    triggerClassName="w-full justify-between py-1.5 px-2 rounded-xl text-xs font-medium"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Payment Date *</label>
+                                                <MobileDatePicker
+                                                    value={advanceForm.date}
+                                                    onChange={(val) => setAdvanceForm({ ...advanceForm, date: val })}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Advance Amount (INR) *</label>
+                                            <input
+                                                type="number"
+                                                value={advanceForm.amount}
+                                                onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-amber-500"
+                                                required
+                                                min="1"
+                                                placeholder="e.g. 1000"
+                                            />
+                                        </div>
+                                        {Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
+                                            <div className="p-2 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 rounded-xl text-[10px] text-rose-700 dark:text-rose-400 flex items-center gap-1.5 font-medium">
+                                                <AlertTriangle size={13} className="shrink-0 text-rose-600" />
+                                                <span>Warning: Amount exceeds accrued balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).</span>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Notes / Reason</label>
+                                            <input
+                                                type="text"
+                                                value={advanceForm.notes}
+                                                onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none"
+                                                placeholder="Emergency medical, festival, travel..."
+                                            />
+                                        </div>
+                                        <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363D]">
+                                            <button type="button" onClick={() => setShowAdvanceModal(false)} className="flex-1 py-2.5 bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-300 rounded-xl font-semibold">
+                                                Cancel
+                                            </button>
+                                            <button type="submit" className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold shadow-xs">
+                                                Record Advance
+                                            </button>
+                                        </div>
+
+                                        {/* Advance Timeline & Past Records */}
+                                        <div className="pt-3 border-t border-slate-100 dark:border-[#30363D] space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-xs text-slate-800 dark:text-white">Past Advances ({advanceHistory.length})</span>
+                                                <div className="flex bg-slate-100 dark:bg-[#161B22] p-0.5 rounded-lg text-[9.5px]">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setAdvanceHistoryView('month'); loadAdvanceHistory(advanceForm.labour_id, financeMonth); }}
+                                                        className={`px-2 py-0.5 rounded font-medium ${advanceHistoryView === 'month' ? 'bg-amber-500 text-white' : 'text-slate-500'}`}
+                                                    >
+                                                        Month
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setAdvanceHistoryView('all'); loadAdvanceHistory(advanceForm.labour_id, null); }}
+                                                        className={`px-2 py-0.5 rounded font-medium ${advanceHistoryView === 'all' ? 'bg-amber-500 text-white' : 'text-slate-500'}`}
+                                                    >
+                                                        All
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {advanceHistoryLoading ? (
+                                                <div className="py-4 text-center text-slate-400">Loading history...</div>
+                                            ) : advanceHistory.length === 0 ? (
+                                                <p className="text-center text-slate-400 italic py-2 text-[10px]">No advance payments logged for this worker.</p>
+                                            ) : (
+                                                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                                                    {advanceHistory.map(adv => (
+                                                        <div key={adv.advance_id} className="p-2 bg-slate-50 dark:bg-[#161B22] rounded-lg border border-slate-200 dark:border-[#30363D] flex items-center justify-between text-xs">
+                                                            <div>
+                                                                <span className="font-bold text-amber-600 dark:text-amber-400">₹{adv.amount}</span>
+                                                                <span className="text-[10px] text-slate-400 ml-2">{formatPlatformDate(adv.date)}</span>
+                                                                {adv.notes && <p className="text-[9.5px] text-slate-500 dark:text-slate-400">{adv.notes}</p>}
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteAdvance(adv.advance_id)}
+                                                                className="text-rose-400 hover:text-rose-600 p-1"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 6: PROCESS PAYOUT / RELEASE */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showPayoutModal && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowPayoutModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">Settle Wage Payout</h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
+                                                {payoutForm.name} ({payoutForm.month})
+                                            </span>
+                                        </div>
+                                        <button onClick={() => setShowPayoutModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <form onSubmit={handleSavePayout} className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
+                                        {/* Financial Breakdown Card */}
+                                        <div className="p-3 bg-slate-50 dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] grid grid-cols-2 gap-2 text-center text-[10px]">
+                                            <div>
+                                                <span className="text-slate-400 uppercase text-[8px] block font-semibold">Accrued</span>
+                                                <span className="font-bold text-slate-800 dark:text-white">₹{payoutForm.accrued_credit}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 uppercase text-[8px] block font-semibold">Advances</span>
+                                                <span className="font-bold text-amber-500">-₹{payoutForm.advances_taken}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 uppercase text-[8px] block font-semibold">Net Payable</span>
+                                                <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{payoutForm.net_payable}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 uppercase text-[8px] block font-semibold">Attendance</span>
+                                                <span className="font-bold text-slate-700 dark:text-slate-300">{payoutForm.present_days}P / {payoutForm.half_days}HD / {payoutForm.absent_days}A</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Paid Amount */}
+                                        <div>
+                                            <div className="flex justify-between items-center mb-1">
+                                                <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase">Release Amount (INR) *</label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPayoutForm({ ...payoutForm, paid_amount: String(payoutForm.net_payable) })}
+                                                    className="text-indigo-600 dark:text-indigo-400 text-[10px] font-bold hover:underline"
+                                                >
+                                                    Use Full Payout
+                                                </button>
+                                            </div>
+                                            <input
+                                                type="number"
+                                                value={payoutForm.paid_amount}
+                                                onChange={(e) => setPayoutForm({ ...payoutForm, paid_amount: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-indigo-500"
+                                                required
+                                                min="0"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Status</label>
+                                                <MinimalSelect
+                                                    options={[
+                                                        { value: 'Paid', label: 'Paid' },
+                                                        { value: 'Pending', label: 'Pending' }
+                                                    ]}
+                                                    value={payoutForm.status}
+                                                    onChange={(val) => setPayoutForm({ ...payoutForm, status: val })}
+                                                    variant="input"
+                                                    size="sm"
+                                                    triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Payment Date</label>
+                                                <MobileDatePicker
+                                                    value={payoutForm.payment_date}
+                                                    onChange={(val) => setPayoutForm({ ...payoutForm, payment_date: val })}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Notes / Reference</label>
+                                            <input
+                                                type="text"
+                                                value={payoutForm.notes}
+                                                onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none"
+                                                placeholder="Cash, Bank Ref #, Cheque..."
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-[#30363D]">
+                                            <button type="button" onClick={() => setShowPayoutModal(false)} className="flex-1 py-2.5 bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-300 rounded-xl font-semibold">
+                                                Cancel
+                                            </button>
+                                            <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs">
+                                                Release Payout
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 7: DAILY SCHEDULE PLANNER */}
                 {createPortal(
                     <AnimatePresence>
                         {showScheduleModal && selectedScheduleLabour && (
@@ -1431,72 +3317,84 @@ const MobileLabourManagement = () => {
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
                                     onClick={() => setShowScheduleModal(false)}
-                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                                 />
                                 <motion.div
                                     initial={{ y: '100%' }}
                                     animate={{ y: 0 }}
                                     exit={{ y: '100%' }}
                                     transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
                                 >
                                     <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                    <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
                                         <div>
-                                            <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
-                                                Daily Site Schedule
-                                            </h4>
-                                            <span className="text-[9px] text-indigo-500 font-medium uppercase tracking-wider">
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">Daily Site Schedule</h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
                                                 Plan Shift for {selectedScheduleLabour.name}
                                             </span>
                                         </div>
-                                        <button onClick={() => setShowScheduleModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d]"><X size={16} /></button>
+                                        <button onClick={() => setShowScheduleModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
                                     </div>
-                                    <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
+                                    <div className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
                                         <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-medium mb-1.5 uppercase tracking-wide text-[9px]">Select Target Date</label>
-                                            <DatePicker
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Target Date</label>
+                                            <MobileDatePicker
                                                 value={scheduleDate}
-                                                onChange={handleScheduleDateChange}
-                                                className="w-full text-xs"
+                                                onChange={async (val) => {
+                                                    setScheduleDate(val);
+                                                    setScheduleLoading(true);
+                                                    try {
+                                                        const res = await labourService.getLabourSchedule(selectedScheduleLabour.labour_id || selectedScheduleLabour.labourId, val);
+                                                        setScheduleSites(res.site_ids || []);
+                                                    } catch (e) {
+                                                        setScheduleSites([]);
+                                                    } finally {
+                                                        setScheduleLoading(false);
+                                                    }
+                                                }}
                                             />
                                         </div>
 
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-medium mb-2 uppercase tracking-wide text-[9px]">
+                                        <div className="space-y-1.5">
+                                            <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase">
                                                 Assign Sites for this Day ({scheduleSites.length} selected)
                                             </label>
                                             {scheduleLoading ? (
-                                                <div className="py-6">
-                                                    <LoadingScreen size="sm" message="Loading site schedules..." fullScreen={false} />
-                                                </div>
+                                                <div className="py-4 text-center text-slate-400">Loading site schedule...</div>
                                             ) : (
-                                                <div className="space-y-2 border border-slate-100 dark:border-[#30363d] rounded-xl p-3 bg-slate-50/30 dark:bg-[#161b22]/30 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                                                <div className="border border-slate-200 dark:border-[#30363D] rounded-xl p-2 bg-slate-50 dark:bg-[#161B22] space-y-1 max-h-48 overflow-y-auto">
                                                     {sites.map(site => {
                                                         const isChecked = scheduleSites.includes(site.site_id);
-                                                        const isPrimary = selectedScheduleLabour.site_id === site.site_id;
+                                                        const isPrimary = (selectedScheduleLabour.site_id === site.site_id);
                                                         return (
                                                             <div
                                                                 key={site.site_id}
-                                                                onClick={() => handleToggleScheduleSite(site.site_id)}
-                                                                className={`flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer select-none ${
+                                                                onClick={() => {
+                                                                    setScheduleSites(prev =>
+                                                                        isChecked ? prev.filter(x => x !== site.site_id) : [...prev, site.site_id]
+                                                                    );
+                                                                }}
+                                                                className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
                                                                     isChecked
-                                                                        ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-700 dark:text-indigo-400 font-medium'
-                                                                        : 'border-slate-100 dark:border-[#30363d] text-slate-600 dark:text-github-dark-text hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                                                                        ? 'bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-300 dark:border-indigo-700/60 font-semibold text-indigo-700 dark:text-indigo-400'
+                                                                        : 'border-slate-200 dark:border-[#30363D] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#21262D]'
                                                                 }`}
                                                             >
                                                                 <div className="flex items-center gap-2">
                                                                     <input
                                                                         type="checkbox"
                                                                         checked={isChecked}
-                                                                        onChange={() => {}} // handled by div onClick
-                                                                        className="rounded text-indigo-650 focus:ring-indigo-500 pointer-events-none"
+                                                                        onChange={() => {}}
+                                                                        className="rounded text-indigo-600 pointer-events-none"
                                                                     />
-                                                                    <span className="text-xs">{site.site_name}</span>
+                                                                    <span>{site.site_name}</span>
                                                                 </div>
                                                                 {isPrimary && (
-                                                                    <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-semibold text-[8px] uppercase tracking-wider">
-                                                                        Primary
+                                                                    <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 text-[8px] font-bold uppercase">
+                                                                        Base Site
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1505,1238 +3403,484 @@ const MobileLabourManagement = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        <p className="text-[9px] text-slate-400 dark:text-github-dark-muted italic leading-relaxed">
-                                            Note: If no daily schedule is configured for a date, the worker will automatically default to their primary site checklist.
+
+                                        <p className="text-[9.5px] text-slate-400 italic">
+                                            If no daily schedule is set, worker automatically appears on their base site checklist.
                                         </p>
-                                        <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                            <button type="button" onClick={() => setShowScheduleModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
-                                            <button type="button" onClick={handleSaveSchedule} disabled={scheduleLoading} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium disabled:opacity-50">Save</button>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
 
-                {/* BOTTOM-SHEET SLIDE-OVER DRAWERS (PORTALS) */}
-                    {/* DRAWERS: SITE FORM */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showSiteModal && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowSiteModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-h-[85vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                    <div>
-                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
-                                            {editingSite ? 'Edit Construction Site' : 'Create Construction Site'}
-                                        </h4>
-                                        <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-medium uppercase tracking-wider">Site Configuration Profile</span>
-                                    </div>
-                                    <button onClick={() => setShowSiteModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d]"><X size={16} /></button>
-                                </div>
-                                <form onSubmit={handleSaveSite} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
-                                    <input
-                                        type="text"
-                                        value={siteForm.site_name}
-                                        onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        required
-                                        placeholder="Site Name"
-                                    />
-                                    <textarea
-                                        value={siteForm.location_details}
-                                        onChange={(e) => setSiteForm({ ...siteForm, location_details: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        rows={3}
-                                        placeholder="Location details / Address"
-                                    />
-                                    {editingSite && (
-                                        <MinimalSelect
-                                            options={[
-                                                { value: 'Active', label: 'Active' },
-                                                { value: 'Completed', label: 'Completed' },
-                                                { value: 'Inactive', label: 'Inactive' }
-                                            ]}
-                                            value={siteForm.status}
-                                            onChange={(val) => setSiteForm({ ...siteForm, status: val })}
-                                            variant="input"
-                                            size="sm"
-                                            triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
-                                        />
-                                    )}
-                                    <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowSiteModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">Save</button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: LABOUR FORM */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showLabourModal && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowLabourModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-h-[90vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                    <div>
-                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
-                                            {editingLabour ? 'Edit Worker Profile' : 'Add Labour Worker'}
-                                        </h4>
-                                        <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-medium uppercase tracking-wider">Worker Configuration Profile</span>
-                                    </div>
-                                    <button onClick={() => setShowLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d]"><X size={16} /></button>
-                                </div>
-                                <form onSubmit={handleSaveLabour} className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs custom-scrollbar">
-                                    <input
-                                        type="text"
-                                        value={labourForm.name}
-                                        onChange={(e) => setLabourForm({ ...labourForm, name: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        required
-                                        placeholder="Worker Full Name"
-                                    />
-                                    <input
-                                        type="tel"
-                                        value={labourForm.phone}
-                                        onChange={(e) => setLabourForm({ ...labourForm, phone: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        placeholder="Phone number"
-                                    />
-                                    <MinimalSelect
-                                        options={[
-                                            { value: 'Male', label: 'Male' },
-                                            { value: 'Female', label: 'Female' },
-                                            { value: 'Other', label: 'Other' }
-                                        ]}
-                                        value={labourForm.sex}
-                                        onChange={(val) => setLabourForm({ ...labourForm, sex: val })}
-                                        variant="input"
-                                        size="sm"
-                                        triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={labourForm.role}
-                                        onChange={(e) => setLabourForm({ ...labourForm, role: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        required
-                                        placeholder="Role (e.g. Mason, Carpenter)"
-                                    />
-                                    <MinimalSelect
-                                        options={[
-                                            { value: '', label: 'Unassigned / Independent' },
-                                            ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
-                                        ]}
-                                        value={labourForm.site_id}
-                                        onChange={(val) => setLabourForm({ ...labourForm, site_id: val })}
-                                        variant="input"
-                                        size="sm"
-                                        triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
-                                    />
-
-                                    <input
-                                        type="number"
-                                        value={labourForm.monthly_salary}
-                                        onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        required
-                                        placeholder="Daily Wage (INR)"
-                                    />
-                                    <input
-                                        type="number"
-                                        value={labourForm.overtime_pay_per_hour}
-                                        onChange={(e) => setLabourForm({ ...labourForm, overtime_pay_per_hour: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        required
-                                        placeholder="Overtime Pay (per hour)"
-                                    />
-                                    {editingLabour && (
-                                        <MinimalSelect
-                                            options={[
-                                                { value: 'Active', label: 'Active' },
-                                                { value: 'Inactive', label: 'Inactive' }
-                                            ]}
-                                            value={labourForm.status}
-                                            onChange={(val) => setLabourForm({ ...labourForm, status: val })}
-                                            variant="input"
-                                            size="sm"
-                                            triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
-                                        />
-                                    )}
-                                    <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowLabourModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">Save</button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: ADVANCE FORM */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showAdvanceModal && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowAdvanceModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-h-[80vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                    <div className="flex items-center gap-1">
-                                        <DollarSign size={16} className="text-amber-500" />
-                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Log Salary Advance ({advanceForm.name})</h4>
-                                    </div>
-                                    <button onClick={() => setShowAdvanceModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
-                                </div>
-                                <form onSubmit={handleSaveAdvance} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
-                                    <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg text-slate-600 dark:text-slate-300">
-                                        Logging salary advance for <strong>{advanceForm.name}</strong>.
-                                    </div>
-                                    <MinimalSelect
-                                        options={[
-                                            { value: 'All', label: 'All Sites (Global / Unallocated)' },
-                                            ...sites.map(s => ({ value: s.site_id.toString(), label: s.site_name }))
-                                        ]}
-                                        value={advanceForm.site_id}
-                                        onChange={(val) => setAdvanceForm({ ...advanceForm, site_id: val })}
-                                        variant="input"
-                                        size="sm"
-                                        triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-medium"
-                                    />
-                                    {(() => {
-                                        const targetM = financeMonth || new Date().toISOString().slice(0, 7);
-                                        const [y, m] = targetM.split('-').map(Number);
-                                        const lastDay = new Date(y, m, 0).getDate();
-                                        const minD = `${targetM}-01`;
-                                        const maxD = `${targetM}-${String(lastDay).padStart(2, '0')}`;
-                                        return (
-                                            <MobileDatePicker
-                                                value={advanceForm.date}
-                                                onChange={(val) => setAdvanceForm({ ...advanceForm, date: val })}
-                                                minDate={minD}
-                                                maxDate={maxD}
-                                            />
-                                        );
-                                    })()}
-                                    <input
-                                        type="number"
-                                        value={advanceForm.amount}
-                                        onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs focus:outline-none"
-                                        required
-                                        placeholder="Advance Amount (INR)"
-                                    />
-                                    {advanceForm.amount && Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
-                                        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-2.5 rounded-xl text-rose-700 dark:text-rose-455 font-medium text-[10px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm">
-                                            <AlertTriangle size={12} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
-                                            <span>
-                                                Warning: Advance exceeds net payable balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).
-                                            </span>
-                                        </div>
-                                    )}
-                                    <input
-                                        type="text"
-                                        value={advanceForm.notes}
-                                        onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs focus:outline-none"
-                                        placeholder="Notes (e.g. medical / festival)"
-                                    />
-                                    <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowAdvanceModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all cursor-pointer">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-medium transition-all cursor-pointer">Record</button>
-                                    </div>
-
-                                    {/* ADVANCE HISTORY & SETTLEMENT CYCLE TIMELINE */}
-                                    {(() => {
-                                        const latestPayout = advancePayouts.length > 0 ? advancePayouts[0] : null;
-                                        const latestPayoutDate = latestPayout?.payment_date
-                                            ? (typeof latestPayout.payment_date === 'string' ? latestPayout.payment_date.split('T')[0] : new Date(latestPayout.payment_date).toISOString().split('T')[0])
-                                            : null;
-
-                                        const isUnsettled = (adv) => {
-                                            if (!latestPayoutDate) return true;
-                                            const advDate = typeof adv.date === 'string' ? adv.date.split('T')[0] : new Date(adv.date).toISOString().split('T')[0];
-                                            if (advDate > latestPayoutDate) return true;
-                                            if (advDate === latestPayoutDate) {
-                                                if (adv.created_at && latestPayout.created_at) {
-                                                    return new Date(adv.created_at) > new Date(latestPayout.created_at);
-                                                }
-                                                return false;
-                                            }
-                                            return false;
-                                        };
-
-                                        const activeAdvances = advanceHistory.filter(adv => isUnsettled(adv));
-                                        const activeTotalAmount = activeAdvances.reduce((sum, a) => sum + Number(a.amount || 0), 0);
-                                        const allAdvancesTotalAmount = advanceHistory.reduce((sum, a) => sum + Number(a.amount || 0), 0);
-
-                                        const allTimelineEvents = [
-                                            ...advanceHistory.map(adv => ({
-                                                type: 'advance',
-                                                id: `adv-${adv.advance_id}`,
-                                                advance_id: adv.advance_id,
-                                                date: typeof adv.date === 'string' ? adv.date.split('T')[0] : new Date(adv.date).toISOString().split('T')[0],
-                                                amount: Number(adv.amount),
-                                                notes: adv.notes,
-                                                site_name: adv.site_name,
-                                                created_at: adv.created_at,
-                                                is_unsettled: isUnsettled(adv)
-                                            })),
-                                            ...advancePayouts.map(p => ({
-                                                type: 'payout',
-                                                id: `payout-${p.payout_id}`,
-                                                payout_id: p.payout_id,
-                                                date: typeof p.payment_date === 'string' ? p.payment_date.split('T')[0] : new Date(p.payment_date).toISOString().split('T')[0],
-                                                amount: Number(p.paid_amount),
-                                                month: p.month,
-                                                notes: p.notes,
-                                                site_name: p.site_name,
-                                                created_at: p.created_at
-                                            }))
-                                        ].sort((a, b) => {
-                                            if (a.date !== b.date) return b.date.localeCompare(a.date);
-                                            return new Date(b.created_at || b.date) - new Date(a.created_at || a.date);
-                                        });
-
-                                        return (
-                                            <div className="pt-4 border-t border-slate-200 dark:border-[#30363d] space-y-3">
-                                                <div className="flex justify-between items-center">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Clock size={13} className="text-amber-500" />
-                                                        <span className="font-medium text-xs text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
-                                                            Advance Timeline
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#161b22] p-0.5 rounded-lg border border-slate-200 dark:border-[#30363d]">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setAdvanceHistoryView('month');
-                                                                loadAdvanceHistory(advanceForm.labour_id, financeMonth);
-                                                            }}
-                                                            className={`px-2 py-0.5 rounded text-[9px] transition-all cursor-pointer ${
-                                                                advanceHistoryView === 'month'
-                                                                    ? 'bg-amber-500 text-white shadow-xs font-medium'
-                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-normal'
-                                                            }`}
-                                                        >
-                                                            This Month ({advanceHistory.length})
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setAdvanceHistoryView('all');
-                                                                loadAdvanceHistory(advanceForm.labour_id, null);
-                                                            }}
-                                                            className={`px-2 py-0.5 rounded text-[9px] transition-all cursor-pointer ${
-                                                                advanceHistoryView === 'all'
-                                                                    ? 'bg-amber-500 text-white shadow-xs font-medium'
-                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-normal'
-                                                            }`}
-                                                        >
-                                                            All Time
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* Summary Badge */}
-                                                <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 p-2.5 rounded-xl text-[10px] flex justify-between items-center">
-                                                    <div>
-                                                        <span className="text-amber-900 dark:text-amber-300 font-medium block">
-                                                            {advanceHistoryView === 'month' ? `Advances in ${getMonthNameAndYear(financeMonth + '-01')}` : 'All-Time Advances Log'}
-                                                        </span>
-                                                        <span className="text-[9px] text-amber-700/80 dark:text-amber-400/70 block mt-0.5">
-                                                            {advanceHistoryView === 'month'
-                                                                ? `Logged advances and payouts for ${getMonthNameAndYear(financeMonth + '-01')}`
-                                                                : `${advancePayouts.length} past settlement${advancePayouts.length !== 1 ? 's' : ''} recorded across all months`}
-                                                        </span>
-                                                    </div>
-                                                    <span className="font-semibold text-amber-600 dark:text-amber-400 text-xs shrink-0 ml-2">
-                                                        {`${advanceHistory.length} • ₹${allAdvancesTotalAmount.toLocaleString()}`}
-                                                    </span>
-                                                </div>
-
-                                                {advanceHistoryLoading ? (
-                                                    <div className="py-4">
-                                                        <LoadingScreen size="sm" message="Loading advance history..." fullScreen={false} />
-                                                    </div>
-                                                ) : allTimelineEvents.length === 0 ? (
-                                                    <div className="text-center py-4 border border-dashed border-slate-200 dark:border-[#30363d] rounded-xl bg-slate-50/50 dark:bg-[#161b22]/30 p-3">
-                                                        <DollarSign size={20} className="mx-auto text-slate-400 dark:text-slate-600 mb-1 opacity-50" />
-                                                        <p className="text-slate-500 dark:text-github-dark-muted text-[10px] font-normal">
-                                                            {advanceHistoryView === 'month'
-                                                                ? `No advances or settlements recorded in ${getMonthNameAndYear(financeMonth + '-01')}`
-                                                                : 'No advances or payments recorded'}
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    <div className="relative pl-5 space-y-2.5 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-amber-300 dark:before:bg-amber-900/60">
-                                                            {allTimelineEvents.map((evt, idx) => (
-                                                                <div key={evt.id || idx} className="relative group">
-                                                                    {evt.type === 'payout' ? (
-                                                                        <>
-                                                                            {/* Settlement Milestone */}
-                                                                            <div className="absolute -left-5 top-2.5 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-white dark:ring-[#0d1117]" />
-                                                                            <div className="bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-2.5 shadow-xs">
-                                                                                <div className="flex justify-between items-start">
-                                                                                    <div>
-                                                                                        <div className="flex items-center gap-1.5">
-                                                                                            <span className="font-semibold text-xs text-emerald-700 dark:text-emerald-400">
-                                                                                                Salary Settled: ₹{evt.amount.toLocaleString()} Paid
-                                                                                            </span>
-                                                                                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[7px] font-medium uppercase">
-                                                                                                Settled
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        <div className="text-[9px] text-slate-500 dark:text-github-dark-muted font-medium mt-0.5">
-                                                                                            Paid on {formatAdvanceDate(evt.date)}
-                                                                                        </div>
-                                                                                        {evt.site_name && (
-                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-slate-300 text-[8px] font-medium border border-emerald-200/50 dark:border-emerald-900/40">
-                                                                                                {evt.site_name}
-                                                                                            </span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </div>
-                                                                                {evt.notes && (
-                                                                                    <p className="mt-1.5 text-[9px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
-                                                                                        {evt.notes}
-                                                                                    </p>
-                                                                                )}
-                                                                            </div>
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            {/* Advance Event */}
-                                                                            <div className={`absolute -left-5 top-2 w-2.5 h-2.5 rounded-full ring-4 ring-white dark:ring-[#0d1117] ${
-                                                                                evt.is_unsettled ? 'bg-amber-500' : 'bg-slate-400 dark:bg-slate-600'
-                                                                            }`} />
-                                                                            <div className={`border rounded-xl p-2.5 transition-all shadow-xs ${
-                                                                                evt.is_unsettled
-                                                                                    ? 'bg-slate-50 dark:bg-[#161b22] border-slate-200/80 dark:border-github-dark-border/80'
-                                                                                    : 'bg-slate-50/40 dark:bg-[#161b22]/40 border-slate-200/40 dark:border-github-dark-border/40 opacity-80'
-                                                                            }`}>
-                                                                                <div className="flex justify-between items-start">
-                                                                                    <div>
-                                                                                        <div className="flex items-center gap-1.5">
-                                                                                            <span className={`font-semibold text-xs ${
-                                                                                                evt.is_unsettled ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-400'
-                                                                                            }`}>
-                                                                                                ₹{evt.amount.toLocaleString()}
-                                                                                            </span>
-                                                                                            <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-medium">
-                                                                                                on {formatAdvanceDate(evt.date)}
-                                                                                            </span>
-                                                                                            <span className={`px-1.5 py-0.2 rounded text-[7px] font-medium uppercase ${
-                                                                                                evt.is_unsettled
-                                                                                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                                                                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                                                                                            }`}>
-                                                                                                {evt.is_unsettled ? 'Unsettled' : 'Settled in Payout'}
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        {evt.site_name && (
-                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-[8px] font-medium">
-                                                                                                {evt.site_name}
-                                                                                            </span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                    {evt.is_unsettled && (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            title="Delete this advance"
-                                                                                            onClick={() => handleDeleteAdvance(evt.advance_id)}
-                                                                                            className="p-1 text-rose-400 hover:text-rose-500 active:bg-rose-50 dark:active:bg-rose-950/40 rounded transition-all cursor-pointer"
-                                                                                        >
-                                                                                            <Trash2 size={12} />
-                                                                                        </button>
-                                                                                    )}
-                                                                                </div>
-                                                                                {evt.notes && (
-                                                                                    <p className="mt-1.5 text-[10px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-slate-100 dark:border-[#30363d]/50 font-normal">
-                                                                                        {evt.notes}
-                                                                                    </p>
-                                                                                )}
-                                                                            </div>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: PAYOUT FORM */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showPayoutModal && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowPayoutModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-h-[90vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                    <div className="flex items-center gap-1">
-                                        <DollarSign size={16} className="text-indigo-500" />
-                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
-                                            {payoutForm.payout_id ? 'Update Payout' : 'Process Payout'}
-                                        </h4>
-                                    </div>
-                                    <button onClick={() => setShowPayoutModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d]"><X size={16} /></button>
-                                </div>
-                                <form onSubmit={handleSavePayout} className="flex-1 overflow-y-auto px-5 pt-4 pb-12 space-y-4 text-xs custom-scrollbar">
-                                    <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl border border-slate-200 dark:border-indigo-900/35 text-[11px]">
-                                        <div className="font-semibold text-slate-800 dark:text-white">Worker: {payoutForm.name}</div>
-                                        <div className="text-slate-500 dark:text-github-dark-muted font-mono mt-0.5 font-normal">{payoutForm.wage_type} | Month: {payoutForm.month}</div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2.5 bg-slate-50 dark:bg-[#161b22]/60 p-3 rounded-xl border border-slate-200 dark:border-github-dark-border text-[10px]">
-                                        <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Attendance:</span>
-                                            <span className="font-semibold text-slate-800 dark:text-white text-xs">
-                                                {payoutForm.present_days}P / {payoutForm.half_days}HD / {payoutForm.absent_days}A
-                                            </span>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Accrued Credit:</span>
-                                            <span className="font-semibold text-slate-800 dark:text-white text-xs">₹{payoutForm.accrued_credit}</span>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Advances Taken:</span>
-                                            <span className="font-semibold text-amber-500 text-xs">-₹{payoutForm.advances_taken}</span>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Net Payable:</span>
-                                            <span className="font-semibold text-slate-800 dark:text-white text-xs">₹{payoutForm.net_payable}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Target Site Dropdown */}
-                                    <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Target Site</label>
-                                        <MinimalSelect
-                                            options={[
-                                                { value: 'All', label: 'All Sites (Auto-Distribute)' },
-                                                ...sites.map(s => ({ value: s.site_id.toString(), label: s.site_name }))
-                                            ]}
-                                            value={payoutForm.site_id}
-                                            onChange={(val) => setPayoutForm({ ...payoutForm, site_id: val })}
-                                            variant="input"
-                                            size="sm"
-                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-medium"
-                                        />
-                                    </div>
-
-                                    {/* Amount to Release - Editable Input */}
-                                    <div className="rounded-xl border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-[#161b22] p-3.5 space-y-3">
-                                        <div className="flex justify-between items-center text-[10px]">
-                                            <div>
-                                                <span className="font-medium text-slate-500 dark:text-github-dark-muted uppercase tracking-wider block">Paid Amount</span>
-                                                <span className="text-[9px] text-slate-400 dark:text-github-dark-muted mt-0.5 block">Remaining Balance: ₹{Math.max(0, payoutForm.net_payable - Number(payoutForm.paid_amount || 0)).toLocaleString()}</span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setPayoutForm({ ...payoutForm, paid_amount: payoutForm.net_payable })}
-                                                className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer bg-transparent border-none"
-                                            >
-                                                Use Full Payout
-                                            </button>
-                                        </div>
-                                        <div className="relative flex items-center">
-                                            <span className="absolute left-3.5 text-slate-400 dark:text-slate-500 font-medium text-sm">₹</span>
-                                            <input
-                                                type="number"
-                                                value={payoutForm.paid_amount}
-                                                onChange={(e) => setPayoutForm({ ...payoutForm, paid_amount: e.target.value })}
-                                                className="w-full pl-6.5 pr-3 py-2 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-[#f0f6fc] text-xs font-semibold rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
-                                                required
-                                                min="0"
-                                                placeholder="Enter release amount"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Status</label>
-                                        <MinimalSelect
-                                            options={[
-                                                { value: 'Paid', label: 'Paid' },
-                                                { value: 'Pending', label: 'Pending' }
-                                            ]}
-                                            value={payoutForm.status}
-                                            onChange={(val) => setPayoutForm({ ...payoutForm, status: val })}
-                                            variant="input"
-                                            size="sm"
-                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-medium"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Payment Date</label>
-                                        <input
-                                            type="date"
-                                            value={payoutForm.payment_date}
-                                            onChange={(e) => setPayoutForm({ ...payoutForm, payment_date: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs font-medium focus:outline-none"
-                                            required
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Notes</label>
-                                        <input
-                                            type="text"
-                                            value={payoutForm.notes}
-                                            onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs font-normal focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
-                                            placeholder="Payment method or Ref#"
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-3 pt-3 border-t border-slate-100 dark:border-[#30363d] mt-2">
-                                        <button type="button" onClick={() => setShowPayoutModal(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl text-xs font-medium uppercase tracking-wider transition-all border border-slate-200 dark:border-github-dark-border">Cancel</button>
-                                        <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-medium uppercase tracking-wider transition-all shadow-sm">
-                                            {payoutForm.payout_id ? 'Update' : 'Release'}
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: BULK TRANSFER */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showBulkTransferModal && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowBulkTransferModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-h-[85vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                    <div className="flex items-center gap-1.5">
-                                        <Building size={16} className="text-indigo-500" />
-                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Bulk Move Workers</h4>
-                                    </div>
-                                    <button onClick={() => setShowBulkTransferModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
-                                </div>
-                                <form onSubmit={handleExecuteBulkTransfer} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">From Site</label>
-                                            <MinimalSelect
-                                                options={[
-                                                    { value: 'All', label: 'All Sites' },
-                                                    { value: 'Unassigned', label: 'Unassigned' },
-                                                    ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
-                                                ]}
-                                                value={bulkSourceSiteId}
-                                                onChange={(val) => {
-                                                    setBulkSourceSiteId(val);
-                                                    setSelectedLabourIds([]);
-                                                }}
-                                                variant="input"
-                                                size="sm"
-                                                triggerClassName="w-full justify-between py-1.5 px-2 rounded-xl font-medium"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">To Site</label>
-                                            <MinimalSelect
-                                                options={[
-                                                    { value: '', label: '-- Choose New Project --' },
-                                                    { value: 'Unassigned', label: 'Unassigned / Independent' },
-                                                    ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
-                                                ]}
-                                                value={bulkDestinationSiteId}
-                                                onChange={(val) => setBulkDestinationSiteId(val)}
-                                                variant="input"
-                                                size="sm"
-                                                triggerClassName="w-full justify-between py-1.5 px-2 rounded-xl font-medium"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center text-slate-500 dark:text-github-dark-muted font-medium">
-                                            <span>Select Workers ({selectedLabourIds.length})</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const filtered = labours.filter(lab => {
-                                                        if (bulkSourceSiteId === 'Unassigned') return lab.site_id === null;
-                                                        if (bulkSourceSiteId !== 'All') return lab.site_id === Number(bulkSourceSiteId);
-                                                        return true;
-                                                    });
-                                                    if (selectedLabourIds.length === filtered.length) {
-                                                        setSelectedLabourIds([]);
-                                                    } else {
-                                                        setSelectedLabourIds(filtered.map(l => l.labour_id));
-                                                    }
-                                                }}
-                                                className="text-indigo-600 dark:text-indigo-400 font-medium text-[10px]"
-                                            >
-                                                Select All
-                                            </button>
-                                        </div>
-
-                                        <div className="border border-slate-200 dark:border-github-dark-border rounded-xl max-h-48 overflow-y-auto p-2 bg-slate-50 dark:bg-[#161b22]/40 custom-scrollbar space-y-1.5">
-                                            {labours
-                                                .filter(lab => {
-                                                    if (bulkSourceSiteId === 'Unassigned') return lab.site_id === null;
-                                                    if (bulkSourceSiteId !== 'All') return lab.site_id === Number(bulkSourceSiteId);
-                                                    return true;
-                                                })
-                                                .map(lab => (
-                                                    <label key={lab.labour_id} className="flex items-center gap-2 py-1.5 cursor-pointer px-1 border-b border-slate-100/50 dark:border-github-dark-border/40">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={selectedLabourIds.includes(lab.labour_id)}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    setSelectedLabourIds(prev => [...prev, lab.labour_id]);
-                                                                } else {
-                                                                    setSelectedLabourIds(prev => prev.filter(id => id !== lab.labour_id));
-                                                                }
-                                                            }}
-                                                            className="rounded text-indigo-600 cursor-pointer"
-                                                        />
-                                                        <div className="truncate">
-                                                            <span className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">{lab.name}</span>
-                                                            <span className="ml-1.5 text-[9px] text-slate-500 dark:text-github-dark-muted">({lab.role})</span>
-                                                        </div>
-                                                    </label>
-                                                ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowBulkTransferModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
-                                        <button
-                                            type="submit"
-                                            disabled={selectedLabourIds.length === 0}
-                                            className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-medium disabled:opacity-50"
-                                        >
-                                            Transfer {selectedLabourIds.length}
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: BORROW WORKER */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showBorrowModal && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowBorrowModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-h-[85vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                    <div className="flex items-center gap-1.5">
-                                        <Plus size={16} className="text-indigo-500" />
-                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Add Worker from Master Data</h4>
-                                    </div>
-                                    <button onClick={() => setShowBorrowModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search worker by name or role..."
-                                            value={borrowSearchQuery}
-                                            onChange={(e) => setBorrowSearchQuery(e.target.value)}
-                                            className="pl-8 pr-4 py-2 w-full bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs focus:outline-none"
-                                        />
-                                    </div>
-
-                                    <div className="border border-slate-200 dark:border-github-dark-border rounded-xl max-h-[50vh] overflow-y-auto p-1 bg-slate-50 dark:bg-[#161b22]/40 divide-y divide-slate-100 dark:divide-github-dark-border/40 custom-scrollbar">
-                                        {labours
-                                            .filter(lab => {
-                                                const isAlreadyInRoster = attendanceRoster.some(r => r.labour_id === lab.labour_id);
-                                                const matchesSearch = lab.name.toLowerCase().includes(borrowSearchQuery.toLowerCase()) ||
-                                                    lab.role.toLowerCase().includes(borrowSearchQuery.toLowerCase());
-                                                return !isAlreadyInRoster && matchesSearch && lab.status === 'Active';
-                                            })
-                                            .map(lab => (
-                                                <div
-                                                    key={lab.labour_id}
-                                                    onClick={() => handleBorrowLabour(lab)}
-                                                    className="flex justify-between items-center p-3 cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-800/30"
-                                                >
-                                                    <div>
-                                                        <span className="font-semibold text-slate-800 dark:text-[#f0f6fc] block">{lab.name}</span>
-                                                        <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-mono">{lab.role} | Base: {lab.site_name || 'Independent'}</span>
-                                                    </div>
-                                                    <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded text-[9px] font-medium">Select</span>
-                                                </div>
-                                            ))}
-                                    </div>
-                                </div>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: SITE CLOSURE REASSIGNMENT */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showSiteClosurePrompt && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowSiteClosurePrompt(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-h-[85vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d] bg-amber-500/10 text-amber-800 dark:text-amber-400">
-                                    <div className="flex items-center gap-1">
-                                        <AlertTriangle size={16} />
-                                        <span className="font-semibold text-xs uppercase">Site Closure</span>
-                                    </div>
-                                    <button onClick={() => setShowSiteClosurePrompt(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
-                                </div>
-                                <form onSubmit={handleConfirmSiteClosure} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
-                                    <p className="text-slate-600 dark:text-slate-300 text-[10px]">
-                                        Transfer workers from closed site <strong>{closureSiteName}</strong>:
-                                    </p>
-                                    <MinimalSelect
-                                        options={[
-                                            { value: '', label: 'Leave Unassigned / Independent' },
-                                            ...sites
-                                                .filter(s => s.site_id !== Number(closureSiteId) && s.status === 'Active')
-                                                .map(s => ({ value: String(s.site_id), label: s.site_name }))
-                                        ]}
-                                        value={closureDestinationSiteId}
-                                        onChange={(val) => setClosureDestinationSiteId(val)}
-                                        variant="input"
-                                        size="sm"
-                                        triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
-                                    />
-                                    <div className="border border-slate-200 dark:border-github-dark-border rounded-xl max-h-32 overflow-y-auto p-2 bg-slate-50 dark:bg-[#161b22]/40">
-                                        <ul className="list-disc pl-4 space-y-1 font-medium text-[10px]">
-                                            {closureLabours.map(l => <li key={l.labour_id} className="text-slate-700 dark:text-slate-300">{l.name} ({l.role})</li>)}
-                                        </ul>
-                                    </div>
-                                    <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-github-dark-border">
-                                        <button type="button" onClick={() => setShowSiteClosurePrompt(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">Transfer & Save</button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: WORK HISTORY */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {selectedHistoryLabour && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        onClick={() => setSelectedHistoryLabour(null)}
-                                        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                                    />
-                                    <motion.div
-                                        initial={{ y: '100%' }}
-                                        animate={{ y: 0 }}
-                                        exit={{ y: '100%' }}
-                                        transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                        className="relative w-full max-h-[90vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                                    >
-                                        <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                        <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                            <div>
-                                                <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-xs">{selectedHistoryLabour.name}</h4>
-                                                <span className="text-[8px] text-slate-500 dark:text-github-dark-muted block font-mono font-normal">Work History Timeline | {selectedHistoryLabour.role}</span>
-                                            </div>
-                                            <button onClick={() => setSelectedHistoryLabour(null)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar text-[10px]">
-                                            {historyLoading ? (
-                                                <div className="py-8">
-                                                    <LoadingScreen size="sm" message="Loading work history..." fullScreen={false} />
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    {/* Global Ledger Card */}
-                                                    {selectedHistoryLabourDetails && (
-                                                        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-3 rounded-xl shadow-md border border-indigo-950/40 space-y-2 mb-3">
-                                                            <div className="flex justify-between items-center">
-                                                                <div>
-                                                                    <span className="block text-[8px] uppercase font-medium text-indigo-300 tracking-wider">All-Time Global Balance</span>
-                                                                    <span className="text-base font-semibold">₹{selectedHistoryLabourDetails.global_net_payable.toLocaleString()}</span>
-                                                                </div>
-                                                                <div className="flex gap-1">
-                                                                    <button
-                                                                        onClick={handleOpenGlobalAdvance}
-                                                                        className="px-2 py-0.5 text-[9px] font-medium bg-amber-500 hover:bg-amber-600 text-white rounded transition-all"
-                                                                    >
-                                                                        Advance
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={handleOpenGlobalPayout}
-                                                                        disabled={selectedHistoryLabourDetails.global_net_payable <= 0}
-                                                                        className="px-2 py-0.5 text-[9px] font-medium bg-white text-indigo-950 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
-                                                                    >
-                                                                        Release
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                            <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-indigo-900/60 text-[8px] font-mono text-indigo-200">
-                                                                <div>
-                                                                    <span className="block text-[7px] uppercase text-indigo-400">Earned</span>
-                                                                    ₹{selectedHistoryLabourDetails.global_earned.toLocaleString()}
-                                                                </div>
-                                                                <div>
-                                                                    <span className="block text-[7px] uppercase text-indigo-400">Paid</span>
-                                                                    ₹{selectedHistoryLabourDetails.global_paid.toLocaleString()}
-                                                                </div>
-                                                                <div>
-                                                                    <span className="block text-[7px] uppercase text-indigo-400">Advances</span>
-                                                                    ₹{selectedHistoryLabourDetails.global_advances.toLocaleString()}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex bg-slate-100 dark:bg-[#161b22] p-0.5 rounded-lg border border-slate-200 dark:border-github-dark-border">
-                                                        <button type="button" onClick={() => setHistoryTab('sites')} className={`flex-1 py-1 text-center font-medium rounded-md transition-all ${historyTab === 'sites' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Timeline</button>
-                                                        <button type="button" onClick={() => setHistoryTab('payouts')} className={`flex-1 py-1 text-center font-medium rounded-md transition-all ${historyTab === 'payouts' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Payouts</button>
-                                                    </div>
-
-                                                    {historyTab === 'sites' ? (
-                                                        <div className="space-y-3">
-                                                            {labourHistoryData.map((siteLog) => {
-                                                                const rate = siteLog.total_days > 0 ? Math.round(((siteLog.present_days + siteLog.paid_leave_days + (0.5 * siteLog.half_day_days)) / siteLog.total_days) * 100) : 0;
-                                                                return (
-                                                                    <div key={siteLog.site_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm">
-                                                                        <div className="flex justify-between items-center">
-                                                                            <span className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">{siteLog.site_name || 'Unassigned'}</span>
-                                                                            <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-1.5 rounded">{rate}% Active</span>
-                                                                        </div>
-                                                                        <span className="text-[8px] text-slate-400 dark:text-[#8b949e] block mt-0.5">{new Date(siteLog.first_date).toLocaleDateString()} to {new Date(siteLog.last_date).toLocaleDateString()} ({siteLog.total_days} Days logged)</span>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="space-y-3">
-                                                            {labourPayoutHistory.length === 0 ? (
-                                                                <div className="text-center text-slate-400 italic py-6">No payouts.</div>
-                                                            ) : (
-                                                                labourPayoutHistory.map((payout) => (
-                                                                    <div key={payout.payout_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm space-y-1.5 text-[10px]">
-                                                                        <div className="flex justify-between items-center font-semibold">
-                                                                            <span className="text-indigo-600 dark:text-indigo-400">{getMonthNameAndYear(payout.month + "-01")}</span>
-                                                                            <span className="text-slate-700 dark:text-slate-300">₹{payout.paid_amount}</span>
-                                                                        </div>
-                                                                        <div className="flex justify-between text-[9px] text-slate-400 dark:text-github-dark-muted font-mono">
-                                                                            <span>Site: {payout.site_name || 'Global / Unallocated'}</span>
-                                                                            <span>Status: {payout.status}</span>
-                                                                        </div>
-                                                                        <div className="text-[8px] text-slate-400 font-mono text-right mt-1">
-                                                                            {new Date(payout.payment_date).toLocaleDateString()}
-                                                                        </div>
-                                                                    </div>
-                                                                ))
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="p-4 border-t border-slate-100 dark:border-github-dark-border flex justify-end">
-                                            <button onClick={() => setSelectedHistoryLabour(null)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-all">Close</button>
-                                        </div>
-                                    </motion.div>
-                                </div>
-                            )}
-                        </AnimatePresence>,
-                        document.body
-                    )}
-
-                    {/* DRAWERS: BULK LABOUR UPLOAD */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showBulkLabourModal && (
-                                <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        onClick={() => setShowBulkLabourModal(false)}
-                                        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                                    />
-                                    <motion.div
-                                        initial={{ y: '100%' }}
-                                        animate={{ y: 0 }}
-                                        exit={{ y: '100%' }}
-                                        transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                        className="relative w-full max-h-[90vh] bg-white dark:bg-[#0d1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363d] z-10"
-                                    >
-                                        <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
-                                        <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
-                                            <div className="flex items-center gap-1">
-                                                <Upload size={16} className="text-indigo-500" />
-                                                <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Bulk Add Labours</h4>
-                                            </div>
-                                            <button onClick={() => setShowBulkLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
-                                            {parsedLabours.length === 0 ? (
-                                                <div className="space-y-3">
-                                                    <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 p-3.5 rounded-xl text-slate-600 dark:text-slate-300">
-                                                        <h5 className="font-semibold text-slate-800 dark:text-white mb-1">Excel & CSV Bulk Upload Template</h5>
-                                                        <p className="text-[10px] text-slate-500 dark:text-github-dark-muted leading-relaxed mb-2.5">
-                                                            Ensure columns: Name, Role, Monthly Salary, Phone, Sex, Wage Type, Site Name.
-                                                        </p>
-                                                        <button
-                                                            type="button"
-                                                            onClick={downloadCSVTemplate}
-                                                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-all text-[10px]"
-                                                        >
-                                                            Download Template
-                                                        </button>
-                                                    </div>
-
-                                                    <div className="border-2 border-dashed border-slate-200 dark:border-github-dark-border rounded-xl p-6 text-center bg-slate-50 dark:bg-[#161b22]/30 flex flex-col items-center justify-center gap-2">
-                                                        <Upload className="text-slate-400" size={24} />
-                                                        <label className="cursor-pointer text-indigo-600 dark:text-indigo-400 hover:underline font-medium">
-                                                            Upload Excel or CSV File
-                                                            <input
-                                                                type="file"
-                                                                accept=".csv,.xlsx"
-                                                                onChange={handleCSVUpload}
-                                                                className="hidden"
-                                                            />
-                                                        </label>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <div className="flex justify-between items-center bg-slate-50 dark:bg-[#161b22] p-2.5 rounded-lg border border-slate-200 dark:border-github-dark-border text-[10px]">
-                                                        <div>
-                                                            <span className="font-semibold text-slate-800 dark:text-github-dark-text">Preview parsed rows</span>
-                                                            <p className="text-slate-400 dark:text-github-dark-muted">{parsedLabours.filter(l => l.isValid).length} of {parsedLabours.length} valid.</p>
-                                                        </div>
-                                                        <button type="button" onClick={() => setParsedLabours([])} className="text-slate-500 hover:text-red-500 font-medium">Clear</button>
-                                                    </div>
-
-                                                    <div className="border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden max-h-60 overflow-y-auto custom-scrollbar">
-                                                        <table className="w-full text-left border-collapse text-[10px]">
-                                                            <thead>
-                                                                <tr className="bg-slate-50 dark:bg-[#161b22] text-slate-400 dark:text-github-dark-muted font-medium border-b border-slate-200 dark:border-[#30363d]">
-                                                                    <th className="p-2">Name</th>
-                                                                    <th className="p-2">Role</th>
-                                                                    <th className="p-2">Salary</th>
-                                                                    <th className="p-2">Site</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {parsedLabours.map((row, idx) => (
-                                                                    <tr key={idx} className="border-b border-slate-100 dark:border-github-dark-border/50">
-                                                                        <td className={`p-2 font-semibold ${row.isValid ? 'text-slate-800 dark:text-white' : 'text-slate-400 line-through'}`}>{row.name || 'Unnamed'}</td>
-                                                                        <td className="p-2 text-slate-500 dark:text-github-dark-muted">{row.role || 'Missing'}</td>
-                                                                        <td className="p-2 text-slate-500 dark:text-github-dark-muted">{isNaN(row.monthly_salary) ? 'Missing' : `₹${row.monthly_salary}`}</td>
-                                                                        <td className="p-2 text-slate-500 dark:text-github-dark-muted">{row.site_name || 'Unassigned'}</td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-
-                                                    <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                                        <button type="button" onClick={() => setParsedLabours([])} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleSaveBulkLabours}
-                                                            disabled={isUploadingBulk || parsedLabours.filter(l => l.isValid).length === 0}
-                                                            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-all"
-                                                        >
-                                                            {isUploadingBulk ? 'Importing...' : `Import (${parsedLabours.filter(l => l.isValid).length})`}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                </div>
-                            )}
-                        </AnimatePresence>,
-                        document.body
-                    )}
-                    {/* CUSTOM CONFIRMATION MODAL */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {confirmDialog.isOpen && (
-                                <div className="fixed inset-0 z-[2000] flex items-center justify-center overflow-hidden p-4">
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-                                        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                                    />
-                                    <motion.div
-                                        initial={{ scale: 0.95, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 1 }}
-                                        exit={{ scale: 0.95, opacity: 0 }}
-                                        transition={{ duration: 0.15 }}
-                                        className="relative w-full max-w-md bg-white dark:bg-[#0d1117] rounded-2xl shadow-2xl flex flex-col border border-slate-200 dark:border-[#30363d] overflow-hidden z-10"
-                                    >
-                                        <div className="p-6">
-                                            <div className="flex items-center gap-3 mb-3 text-red-500">
-                                                <AlertTriangle size={20} />
-                                                <h4 className="font-semibold text-slate-900 dark:text-[#f0f6fc] text-sm">
-                                                    {confirmDialog.title}
-                                                </h4>
-                                            </div>
-                                            <p className="text-slate-600 dark:text-github-dark-muted text-[11px] leading-relaxed">
-                                                {confirmDialog.message}
-                                            </p>
-                                        </div>
-                                        <div className="flex gap-2.5 p-4 bg-slate-50 dark:bg-[#010409]/40 border-t border-slate-100 dark:border-[#30363d]">
-                                            <button
-                                                type="button"
-                                                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-                                                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl font-medium transition-all text-xs border border-slate-200 dark:border-github-dark-border"
-                                            >
+                                        <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-[#30363D]">
+                                            <button type="button" onClick={() => setShowScheduleModal(false)} className="flex-1 py-2.5 bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-300 rounded-xl font-semibold">
                                                 Cancel
                                             </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (confirmDialog.onConfirm) confirmDialog.onConfirm();
-                                                    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-                                                }}
-                                                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-medium transition-all text-xs shadow-sm"
-                                            >
-                                                Confirm
+                                            <button type="button" onClick={handleSaveSchedule} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs">
+                                                Save Schedule
                                             </button>
                                         </div>
-                                    </motion.div>
-                                </div>
-                            )}
-                        </AnimatePresence>,
-                        document.body
-                    )}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 8: WAGE REVISION HISTORY */}
+                {createPortal(
+                    <AnimatePresence>
+                        {wageRevisionWorker && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setWageRevisionWorker(null)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">Wage Revision History</h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
+                                                {wageRevisionWorker.name} ({wageRevisionWorker.role})
+                                            </span>
+                                        </div>
+                                        <button onClick={() => setWageRevisionWorker(null)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-bold text-xs text-slate-800 dark:text-white">Past Revisions ({wageRevisionList.length})</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAddRevisionForm(prev => !prev)}
+                                                className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg font-semibold text-[10px] border border-indigo-200/50"
+                                            >
+                                                {showAddRevisionForm ? 'Cancel' : '+ Add Revision'}
+                                            </button>
+                                        </div>
+
+                                        {showAddRevisionForm && (
+                                            <form onSubmit={handleSaveNewRevision} className="p-3 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-xl border border-indigo-200/60 dark:border-indigo-800/40 space-y-2.5">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="block text-[9px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Effective Date *</label>
+                                                        <MobileDatePicker
+                                                            value={newRevisionForm.effective_date}
+                                                            onChange={(val) => setNewRevisionForm({ ...newRevisionForm, effective_date: val })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Daily Wage (INR) *</label>
+                                                        <input
+                                                            type="number"
+                                                            value={newRevisionForm.daily_rate}
+                                                            onChange={(e) => setNewRevisionForm({ ...newRevisionForm, daily_rate: e.target.value })}
+                                                            className="w-full px-2.5 py-1.5 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-lg text-xs font-mono font-bold"
+                                                            required
+                                                            placeholder="650"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="block text-[9px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">OT Pay / Hr</label>
+                                                        <input
+                                                            type="number"
+                                                            value={newRevisionForm.overtime_pay_per_hour}
+                                                            onChange={(e) => setNewRevisionForm({ ...newRevisionForm, overtime_pay_per_hour: e.target.value })}
+                                                            className="w-full px-2.5 py-1.5 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-lg text-xs font-mono font-bold"
+                                                            placeholder="90"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-semibold text-slate-600 dark:text-slate-300 uppercase mb-1">Notes</label>
+                                                        <input
+                                                            type="text"
+                                                            value={newRevisionForm.notes}
+                                                            onChange={(e) => setNewRevisionForm({ ...newRevisionForm, notes: e.target.value })}
+                                                            className="w-full px-2.5 py-1.5 bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] text-slate-900 dark:text-white rounded-lg text-xs"
+                                                            placeholder="Promoted to Lead..."
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="submit"
+                                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-xs"
+                                                >
+                                                    Commit Revision
+                                                </button>
+                                            </form>
+                                        )}
+
+                                        {wageRevisionLoading ? (
+                                            <div className="py-6 text-center text-slate-400">Loading revisions...</div>
+                                        ) : wageRevisionList.length === 0 ? (
+                                            <p className="text-center text-slate-400 italic py-4">No revisions logged. Base wage active.</p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {wageRevisionList.map(rev => (
+                                                    <div key={rev.revision_id} className="p-3 bg-slate-50 dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] flex items-center justify-between">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold text-xs text-emerald-600 dark:text-emerald-400">₹{rev.daily_rate}/day</span>
+                                                                <span className="text-[10px] text-slate-400 font-medium">Effective: {formatPlatformDate(rev.effective_date)}</span>
+                                                            </div>
+                                                            <p className="text-[9.5px] text-slate-500 dark:text-[#8B949E] mt-0.5">
+                                                                OT: ₹{Number(rev.overtime_pay_per_hour || 0)}/h {rev.notes ? `• ${rev.notes}` : ''}
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteRevision(rev.revision_id)}
+                                                            className="text-rose-400 hover:text-rose-600 p-1.5"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 9: WORK HISTORY & SETTLEMENTS */}
+                {createPortal(
+                    <AnimatePresence>
+                        {selectedHistoryLabour && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setSelectedHistoryLabour(null)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">{selectedHistoryLabour.name}</h4>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">
+                                                Work History & Settlement Records
+                                            </span>
+                                        </div>
+                                        <button onClick={() => setSelectedHistoryLabour(null)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+                                        {/* Global Ledger Banner */}
+                                        {selectedHistoryLabourDetails && (
+                                            <div className="p-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl shadow-md border border-indigo-950/40 space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <span className="block text-[8px] uppercase font-bold text-indigo-300 tracking-wider">All-Time Global Balance</span>
+                                                        <span className="text-base font-bold text-emerald-400">₹{selectedHistoryLabourDetails.global_net_payable.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenAdvance(selectedHistoryLabour)}
+                                                            className="px-2.5 py-1 text-[9.5px] font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-all"
+                                                        >
+                                                            Advance
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenPayout(selectedHistoryLabour)}
+                                                            disabled={selectedHistoryLabourDetails.global_net_payable <= 0}
+                                                            className="px-2.5 py-1 text-[9.5px] font-semibold bg-white text-indigo-950 hover:bg-indigo-50 disabled:opacity-40 rounded-lg transition-all"
+                                                        >
+                                                            Release
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-indigo-900/60 text-[8px] font-mono text-indigo-200">
+                                                    <div>
+                                                        <span className="block text-[7.5px] uppercase text-indigo-400">Earned</span>
+                                                        ₹{selectedHistoryLabourDetails.global_earned.toLocaleString()}
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-[7.5px] uppercase text-indigo-400">Paid</span>
+                                                        ₹{selectedHistoryLabourDetails.global_paid.toLocaleString()}
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-[7.5px] uppercase text-indigo-400">Advances</span>
+                                                        ₹{selectedHistoryLabourDetails.global_advances.toLocaleString()}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Subtab Switcher */}
+                                        <div className="flex bg-slate-100 dark:bg-[#161B22] p-0.5 rounded-lg border border-slate-200 dark:border-[#30363D]">
+                                            <button
+                                                type="button"
+                                                onClick={() => setHistoryTab('sites')}
+                                                className={`flex-1 py-1 rounded font-semibold text-[10.5px] transition-all ${
+                                                    historyTab === 'sites' ? 'bg-white dark:bg-[#21262D] text-indigo-600 dark:text-white shadow-2xs' : 'text-slate-500'
+                                                }`}
+                                            >
+                                                Site Timeline
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setHistoryTab('payouts')}
+                                                className={`flex-1 py-1 rounded font-semibold text-[10.5px] transition-all ${
+                                                    historyTab === 'payouts' ? 'bg-white dark:bg-[#21262D] text-indigo-600 dark:text-white shadow-2xs' : 'text-slate-500'
+                                                }`}
+                                            >
+                                                Payout Records
+                                            </button>
+                                        </div>
+
+                                        {historyLoading ? (
+                                            <div className="py-6 text-center text-slate-400">Loading history...</div>
+                                        ) : historyTab === 'sites' ? (
+                                            <div className="space-y-2">
+                                                {labourHistoryData.length === 0 ? (
+                                                    <p className="text-center text-slate-400 italic py-4">No site work history recorded.</p>
+                                                ) : (
+                                                    labourHistoryData.map(siteLog => {
+                                                        const rate = siteLog.total_days > 0 ? Math.round(((siteLog.present_days + siteLog.paid_leave_days + (0.5 * siteLog.half_day_days)) / siteLog.total_days) * 100) : 0;
+                                                        return (
+                                                            <div key={siteLog.site_id} className="p-3 bg-slate-50 dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D]">
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="font-bold text-xs text-slate-900 dark:text-white">{siteLog.site_name || 'Unassigned'}</span>
+                                                                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">{rate}% Active</span>
+                                                                </div>
+                                                                <span className="text-[9px] text-slate-400 block mt-0.5">
+                                                                    {formatPlatformDate(siteLog.first_date)} to {formatPlatformDate(siteLog.last_date)} ({siteLog.total_days} Days logged)
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {labourPayoutHistory.length === 0 ? (
+                                                    <p className="text-center text-slate-400 italic py-4">No payout records found.</p>
+                                                ) : (
+                                                    labourPayoutHistory.map(payout => (
+                                                        <div key={payout.payout_id} className="p-3 bg-slate-50 dark:bg-[#161B22] rounded-xl border border-slate-200 dark:border-[#30363D] space-y-1">
+                                                            <div className="flex justify-between items-center font-bold">
+                                                                <span className="text-indigo-600 dark:text-indigo-400">{payout.month}</span>
+                                                                <span className="text-slate-900 dark:text-white">₹{payout.paid_amount}</span>
+                                                            </div>
+                                                            <div className="flex justify-between text-[9px] text-slate-400 font-mono">
+                                                                <span>Site: {payout.site_name || 'Global'}</span>
+                                                                <span>Status: {payout.status}</span>
+                                                            </div>
+                                                            <p className="text-[8.5px] text-slate-400 text-right">{formatPlatformDate(payout.payment_date)}</p>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 10: BULK UPLOAD EXCEL / CSV */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showBulkLabourModal && (
+                            <div className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowBulkLabourModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="flex justify-between items-center px-5 pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                                        <div className="flex items-center gap-2">
+                                            <Upload size={16} className="text-indigo-600" />
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">Bulk Upload Labours</h4>
+                                        </div>
+                                        <button onClick={() => setShowBulkLabourModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
+                                        {parsedLabours.length === 0 ? (
+                                            <div className="space-y-3">
+                                                <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl space-y-1.5">
+                                                    <h5 className="font-bold text-xs text-indigo-950 dark:text-indigo-200">Excel / CSV Template</h5>
+                                                    <p className="text-[10px] text-slate-500 dark:text-[#8B949E] leading-relaxed">
+                                                        Ensure file contains: Name, Role, Monthly Salary (or Daily Wage), Phone, Sex, Site Name.
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={downloadCSVTemplate}
+                                                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-[10px] shadow-2xs"
+                                                    >
+                                                        Download Template
+                                                    </button>
+                                                </div>
+
+                                                <div className="border-2 border-dashed border-slate-200 dark:border-[#30363D] rounded-xl p-8 text-center bg-slate-50 dark:bg-[#161B22] flex flex-col items-center justify-center gap-2">
+                                                    <Upload size={28} className="text-slate-400" />
+                                                    <label className="cursor-pointer text-indigo-600 dark:text-indigo-400 hover:underline font-bold text-xs">
+                                                        Upload .xlsx or .csv
+                                                        <input
+                                                            type="file"
+                                                            accept=".csv,.xlsx"
+                                                            onChange={handleCSVUpload}
+                                                            className="hidden"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <span className="font-bold text-slate-800 dark:text-white">
+                                                        Preview ({parsedLabours.filter(l => l.isValid).length} Valid)
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setParsedLabours([])}
+                                                        className="text-rose-500 text-[10px] font-semibold"
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                </div>
+                                                <div className="border border-slate-200 dark:border-[#30363D] rounded-xl max-h-56 overflow-y-auto">
+                                                    <table className="w-full text-left text-[10px]">
+                                                        <thead className="bg-slate-50 dark:bg-[#161B22] border-b border-slate-200 dark:border-[#30363D]">
+                                                            <tr>
+                                                                <th className="p-2">Name</th>
+                                                                <th className="p-2">Role</th>
+                                                                <th className="p-2">Wage</th>
+                                                                <th className="p-2">Site</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 dark:divide-[#21262D]">
+                                                            {parsedLabours.map((r, i) => (
+                                                                <tr key={i}>
+                                                                    <td className={`p-2 font-bold ${r.isValid ? 'text-slate-900 dark:text-white' : 'line-through text-slate-400'}`}>{r.name}</td>
+                                                                    <td className="p-2">{r.role}</td>
+                                                                    <td className="p-2">₹{r.monthly_salary}</td>
+                                                                    <td className="p-2">{r.site_name || 'Unassigned'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363D]">
+                                                    <button type="button" onClick={() => setParsedLabours([])} className="flex-1 py-2.5 bg-slate-100 dark:bg-[#21262D] text-slate-600 dark:text-slate-300 rounded-xl font-semibold">
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSaveBulkLabours}
+                                                        disabled={isUploadingBulk}
+                                                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs"
+                                                    >
+                                                        {isUploadingBulk ? 'Importing...' : 'Confirm Import'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* BOTTOM-SHEET 11: CONFIRM ACTION DIALOG */}
+                {createPortal(
+                    <AnimatePresence>
+                        {confirmDialog.isOpen && (
+                            <div className="fixed inset-0 z-[2000] flex items-end justify-center overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                                />
+                                <motion.div
+                                    initial={{ y: '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-h-[85vh] bg-white dark:bg-[#0D1117] rounded-t-3xl shadow-2xl flex flex-col border-t border-slate-200 dark:border-[#30363D] z-10"
+                                >
+                                    <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
+                                    <div className="p-6 space-y-3">
+                                        <div className="flex items-center gap-2.5 text-rose-500">
+                                            <AlertTriangle size={20} />
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                                                {confirmDialog.title}
+                                            </h4>
+                                        </div>
+                                        <p className="text-slate-600 dark:text-[#8B949E] text-xs leading-relaxed">
+                                            {confirmDialog.message}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2 p-4 bg-slate-50 dark:bg-[#161B22] border-t border-slate-100 dark:border-[#30363D]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                                            className="flex-1 py-2.5 bg-slate-200/80 dark:bg-[#21262D] text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+                                                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                                            }}
+                                            className={`flex-1 py-2.5 rounded-xl font-bold text-xs text-white shadow-xs ${
+                                                confirmDialog.isDestructive ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                                            }`}
+                                        >
+                                            {confirmDialog.confirmText}
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
             </div>
         </MobileDashboardLayout>
     );

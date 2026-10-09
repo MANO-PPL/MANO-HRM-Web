@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, CheckCircle } from 'lucide-react';
 import LoadingScreen from '../../../../components/LoadingScreen';
 import { getMonthNameAndYear } from '../../utils/labourUtils';
+import { formatPlatformDate } from '../../../../utils/dateUtils';
 
 const WorkerHistoryDrawer = ({
     selectedHistoryLabour,
@@ -131,7 +132,7 @@ const WorkerHistoryDrawer = ({
                                                                 <div>
                                                                     <h6 className="font-semibold text-xs text-slate-800 dark:text-[#f0f6fc]">{siteLog.site_name || 'Unassigned'}</h6>
                                                                     <span className="text-[9px] text-slate-400 dark:text-[#8b949e] font-mono">
-                                                                        {new Date(siteLog.first_date).toLocaleDateString()} to {new Date(siteLog.last_date).toLocaleDateString()}
+                                                                        {formatPlatformDate(siteLog.first_date)} to {formatPlatformDate(siteLog.last_date)}
                                                                     </span>
                                                                 </div>
                                                                 <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full">{attendanceRate}% Active</span>
@@ -199,7 +200,7 @@ const WorkerHistoryDrawer = ({
                                                                 <span>Method: {payout.notes || 'Unspecified'}</span>
                                                             </div>
                                                             <div className="text-[10px] text-slate-400 dark:text-[#8b949e] font-mono text-right mt-1">
-                                                                <span>{new Date(payout.payment_date).toLocaleDateString()}</span>
+                                                                <span>{formatPlatformDate(payout.payment_date)}</span>
                                                             </div>
                                                         </div>
                                                     ))
