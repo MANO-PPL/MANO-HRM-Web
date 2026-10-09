@@ -9,6 +9,7 @@ import api from '../../services/api';
 import { toast } from 'react-toastify';
 import MinimalSelect from '../../components/MinimalSelect';
 import LoadingScreen from '../../components/LoadingScreen';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const UserFeedback = () => {
     const [feedback, setFeedback] = useState([]);
@@ -137,7 +138,7 @@ Status: ${item.status?.toUpperCase()}
 Title: ${item.title}
 Submitter: ${item.user_name || 'Anonymous'} (${item.email || 'No email'})
 Organization: ${item.org_name || 'N/A'}
-Date Submitted: ${new Date(item.created_at).toLocaleString()}
+Date Submitted: ${formatPlatformDate(item.created_at)} at ${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
 --------------------------------------------------
 Description:
 ${item.description}
@@ -166,7 +167,7 @@ ${item.description}
             if (diffHours < 24) return `${diffHours}h ago`;
             if (diffDays < 7) return `${diffDays}d ago`;
             
-            return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            return formatPlatformDate(date);
         } catch (e) {
             return '';
         }

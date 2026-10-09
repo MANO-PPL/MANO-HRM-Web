@@ -4,6 +4,7 @@ import { ShieldAlert, Search, Loader2, CheckCircle, Clock } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import LoadingScreen from '../../components/LoadingScreen';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const SecurityAlertsMobile = () => {
   const [alerts, setAlerts] = useState([]);
@@ -95,7 +96,7 @@ const SecurityAlertsMobile = () => {
                       {getSeverityBadge(alert.severity)}
                       <span className="font-bold text-slate-805 dark:text-github-dark-text text-[13px] truncate">{alert.alert_type}</span>
                     </div>
-                    <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-mono">{new Date(alert.created_at).toLocaleDateString()}</span>
+                    <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-mono">{formatPlatformDate(alert.created_at)}</span>
                   </div>
 
                   <div className="space-y-2">

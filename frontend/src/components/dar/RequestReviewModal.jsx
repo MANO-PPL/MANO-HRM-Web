@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, ArrowRight, Clock, FileText, Activity, AlertCircle, Calendar } from 'lucide-react';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const RequestReviewModal = ({ isOpen, onClose, request, onApprove, onReject, inline = false }) => {
     // Mock Data if no request is passed (for development/preview)
@@ -67,9 +68,7 @@ const RequestReviewModal = ({ isOpen, onClose, request, onApprove, onReject, inl
     const formatReviewDate = (dateStr) => {
         if (!dateStr) return '';
         try {
-            const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
-            if (isNaN(d.getTime())) return dateStr;
-            return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            return formatPlatformDate(dateStr);
         } catch (e) {
             return dateStr;
         }

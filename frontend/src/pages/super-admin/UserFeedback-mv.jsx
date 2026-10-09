@@ -9,10 +9,14 @@ import api from '../../services/api';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 import MinimalSelect from '../../components/MinimalSelect';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const FeedbackDetailsModal = ({ item, onClose, onRefresh, onUpdateStatus }) => {
   const formatDateTime = (dateStr) => {
-    return new Date(dateStr).toLocaleString();
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${formatPlatformDate(d)} at ${timeStr}`;
   };
 
   const handleCopyDetails = () => {
@@ -268,7 +272,7 @@ const UserFeedbackMobile = () => {
       if (diffMins < 60) return `${diffMins}m ago`;
       if (diffHours < 24) return `${diffHours}h ago`;
       if (diffDays < 7) return `${diffDays}d';`
-      return date.toLocaleDateString();
+      return formatPlatformDate(date);
     } catch (e) {
       return '';
     }

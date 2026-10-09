@@ -6,6 +6,7 @@ import RequestReviewModal from '../../dar/RequestReviewModal'; // Ensure path is
 import api from '../../../services/api'; // Ensure path is correct
 import { toast } from 'react-toastify';
 import MinimalSelect from '../../MinimalSelect';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const RequestManager = ({ departments = [] }) => {
     const location = useLocation();
@@ -172,7 +173,7 @@ const RequestManager = ({ departments = [] }) => {
                             >
                                 <div className="flex justify-between items-start mb-1">
                                     <span className={`font-bold text-sm ${selectedRequest?.id === req.id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>{req.user}</span>
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{req.date ? new Date(req.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{req.date ? formatPlatformDate(req.date) : ''}</span>
                                 </div>
                                 <div className="text-xs text-slate-500 mb-2">{req.changes} changes proposed</div>
                                 <div className="flex items-center gap-2">

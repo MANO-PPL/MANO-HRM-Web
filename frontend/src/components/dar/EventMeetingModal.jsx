@@ -13,6 +13,7 @@ import {
     Calendar as CalendarIcon,
     Trash2
 } from 'lucide-react';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const EventMeetingModal = ({ onClose, onSave, type = 'Meeting', initialDate = new Date().toISOString().split('T')[0], initialData = null }) => {
     const [selectedType, setSelectedType] = useState(type); // 'Event' or 'Meeting'
@@ -140,7 +141,7 @@ const EventMeetingModal = ({ onClose, onSave, type = 'Meeting', initialDate = ne
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase().replace(' ', '');
     };
 
-    const formattedDateString = new Date(date).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+    const formattedDateString = formatPlatformDate(date);
     const fullTimeString = `${formattedDateString}  ${formatTimeDisplay(startTime)} - ${formatTimeDisplay(endTime)}`;
 
     const handleSubmit = async () => {
