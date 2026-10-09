@@ -740,7 +740,7 @@ CREATE TABLE `leave_attachments` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_leave_attachments_leave_id` (`leave_id`),
-  CONSTRAINT `fk_leave_attachments_leave_requests` FOREIGN KEY (`leave_id`) REFERENCES `leave_requests` (`lr_id`)
+  CONSTRAINT `fk_leave_attachments_leave_requests` FOREIGN KEY (`leave_id`) REFERENCES `leave_request` (`lr_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `leave_balances` (
   `lb_id` int unsigned NOT NULL AUTO_INCREMENT,
