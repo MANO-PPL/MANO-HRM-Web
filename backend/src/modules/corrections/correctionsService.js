@@ -1,10 +1,9 @@
 import { attendanceDB } from '../../config/database.js';
 import { toMySQLDate } from '../../utils/dateUtils.js';
 import * as S3Service from '../../services/s3/s3Service.js';
-import { syncDailyAttendance } from '../attendance/attendanceService.js';
-import { handleAttendanceCorrectionApprovedHook } from '../DAR/darReconciliationService.js';
 import * as ShiftService from '../shifts/shiftService.js';
-import { getTodayStr } from '../reports/reportsServices.js';
+import { syncDailyAttendance, getTodayStr } from '../attendance/attendanceService.js';
+import { handleAttendanceCorrectionApprovedHook } from '../DAR/darReconciliationService.js';
 
 
 
@@ -210,6 +209,7 @@ export async function fetchCorrectionRequests({
 
   const data = await attendanceDB("attn_corrections as c")
     .join("core_users as u", "u.user_id", "c.user_id")
+    .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
     .where("u.org_id", org_id)
     .modify(applyFilters)
     .select(
@@ -229,7 +229,8 @@ export async function fetchCorrectionRequests({
       "u.user_id",
       "u.user_name",
       "u.desg_id",
-      "u.profile_image_url"
+      "u.profile_image_url",
+      "d.desg_name as designation"
     )
     .orderBy("c.submitted_at", "desc")
     .limit(limit)

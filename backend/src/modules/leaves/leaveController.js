@@ -121,7 +121,7 @@ export const updateLeaveStatus = catchAsync(async (req, res) => {
             }).catch(console.error);
         }
 
-        res.json({ ok: true, message: `Request ${status}` });
+        res.json({ ok: true, message: `Request ${status}`, request });
     } catch (err) {
         if (err.status) return res.status(err.status).json({ ok: false, message: err.message });
         throw err;

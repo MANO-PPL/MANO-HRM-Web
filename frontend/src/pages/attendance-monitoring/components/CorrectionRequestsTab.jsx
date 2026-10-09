@@ -23,6 +23,7 @@ import {
     ZoomOut
 } from 'lucide-react';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
+import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
 import { attendanceService } from '../../../services/attendanceService';
 import { toast } from 'react-toastify';
 import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
@@ -420,7 +421,7 @@ const CorrectionRequestsTab = ({
                                                     {request.user_name}
                                                 </p>
                                                 <p className="text-xs text-slate-500 dark:text-github-dark-muted font-normal truncate">
-                                                    {request.designation || `ID: ${request.user_id}`}
+                                                    {request.designation || 'Employee'}
                                                 </p>
                                             </div>
                                         </div>
@@ -701,39 +702,7 @@ const CorrectionRequestsTab = ({
                             )}
 
                             {/* Section: Audit Trail & History */}
-                            {(() => {
-                                const trail = typeof selectedRequestData.audit_trail === 'string'
-                                    ? (() => { try { return JSON.parse(selectedRequestData.audit_trail); } catch { return []; } })()
-                                    : (Array.isArray(selectedRequestData.audit_trail) ? selectedRequestData.audit_trail : []);
-                                if (trail && trail.length > 0) {
-                                    return (
-                                        <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-4">
-                                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 block mb-3 flex items-center gap-1.5">
-                                                <Activity size={14} className="text-indigo-500" /> Audit Trail & History
-                                            </span>
-                                            <div className="relative pl-3.5 border-l-2 border-slate-200 dark:border-github-dark-border space-y-3">
-                                                {trail.map((event, idx) => (
-                                                    <div key={idx} className="relative">
-                                                        <div className="absolute -left-[19px] top-1 w-2 h-2 rounded-full bg-indigo-500 border-2 border-white dark:border-dark-card ring-1 ring-indigo-200 dark:ring-indigo-800"></div>
-                                                        <p className="text-xs font-semibold text-slate-800 dark:text-github-dark-text capitalize">
-                                                            {String(event.action).toLowerCase()}
-                                                        </p>
-                                                        <p className="text-xs text-slate-400 dark:text-github-dark-muted font-normal mt-0.5">
-                                                            {event.at ? new Date(event.at).toLocaleString() : 'N/A'} • by {event.by === selectedRequestData.user_id ? selectedRequestData.user_name : (event.by_name || 'Admin')}
-                                                        </p>
-                                                        {event.comments && (
-                                                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 italic pl-2 border-l border-slate-200 dark:border-github-dark-border font-normal">
-                                                                "{event.comments}"
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            })()}
+                            <AuditTrailTimeline record={selectedRequestData} />
                         </div>
                     </>
                 ) : (

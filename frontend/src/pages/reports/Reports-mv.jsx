@@ -23,14 +23,15 @@ import {
     FileSpreadsheet,
     FileType,
     User,
-    MapPin
+    MapPin,
+    BarChart2
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 import MonthPicker from '../../components/MonthPicker';
 import MobileDatePicker from '../../components/MobileDatePicker';
-import { compareSortValues } from './components/reportsUtils';
+import { compareSortValues, getStatusColor, getStatusLabel, classifyAttendanceStatus, ATTENDANCE_STATUS_OPTIONS, getStatusFullForm } from './components/reportsUtils';
 
 const getAlignmentClass = (colHeader) => {
     if (!colHeader) return 'center';
@@ -385,33 +386,8 @@ const EmployeeCard = ({ row, columns }) => {
     );
 };
 
-const mvGetStatusColor = (status) => {
-    const s = status || '';
-    if (!s || s === '-' || s === 'Not Recorded') return 'bg-slate-50 text-slate-300 dark:bg-slate-900/50 dark:text-slate-700 border border-slate-200 dark:border-slate-800 opacity-60';
-    if (s === 'Present' || s.includes('Present')) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/50';
-    if (s === 'Absent') return 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 ring-1 ring-rose-200 dark:ring-rose-800/50';
-    if (s.toLowerCase().includes('overtime')) return 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400 ring-1 ring-purple-200 dark:ring-purple-800/50';
-    if (s.toLowerCase().includes('late')) return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 ring-1 ring-amber-200 dark:ring-amber-800/50';
-    if (s === 'Sun' || s === 'Sat' || s === 'WEEK_OFF') return 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500';
-    if (s.toLowerCase() === 'on leave') return 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400 ring-1 ring-sky-200 dark:ring-sky-800/50';
-    if (s.toLowerCase() === 'half day') return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800/50';
-    return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
-};
-
-const mvGetStatusLabel = (status) => {
-    const s = status || '';
-    if (!s || s === '-' || s === 'Not Recorded') return '·';
-    if (s === 'Present') return 'P';
-    if (s === 'Absent') return 'A';
-    if (s === 'Sun') return 'Su';
-    if (s === 'Sat') return 'Sa';
-    if (s === 'WEEK_OFF') return 'WO';
-    if (s.toLowerCase() === 'on leave') return 'L';
-    if (s.toLowerCase() === 'half day') return 'HD';
-    if (s.toLowerCase().includes('overtime')) return 'OT';
-    if (s.toLowerCase().includes('late')) return 'Lt';
-    return s.slice(0, 2);
-};
+const mvGetStatusColor = getStatusColor;
+const mvGetStatusLabel = getStatusLabel;
 
 // Same set/labels/grouping as desktop (Reports.jsx) — grouped by report kind so the
 // categorized dropdown can show section headers.
@@ -498,6 +474,10 @@ const MobileReports = () => {
     const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [isDetailSidebarOpen, setIsDetailSidebarOpen] = useState(false);
+
+    // Attendance record status filter and Totals toggle
+    const [selectedAttendanceStatuses, setSelectedAttendanceStatuses] = useState(['present', 'absent']);
+    const [showTotalAttendance, setShowTotalAttendance] = useState(true);
 
     const [employees, setEmployees] = useState([]);
     const [departments, setDepartments] = useState([]);
@@ -1089,9 +1069,10 @@ const MobileReports = () => {
             const stats = {
                 present: 0,
                 absent: 0,
-                leave: 0, // Note: Future version might split this into paid vs unpaid leaves
+                leave: 0,
                 halfDay: 0,
                 weeklyOff: 0,
+                missedPunch: 0,
                 overtimeHrs: 0
             };
 
@@ -1099,25 +1080,22 @@ const MobileReports = () => {
                 const record = emp.records[rawDate];
                 if (!record) return;
 
-                const status = record.status || '';
-                const statusLower = status.toLowerCase();
-
-                if (status === 'Present' || statusLower.includes('present')) {
-                    stats.present += 1;
-                } else if (status === 'Absent' || statusLower.includes('absent')) {
-                    stats.absent += 1;
-                } else if (statusLower === 'on leave' || statusLower === 'leave') {
+                const category = classifyAttendanceStatus(record.status);
+                if (category === 'missedPunch') {
+                    stats.missedPunch += 1;
+                } else if (category === 'leave') {
                     stats.leave += 1;
-                } else if (statusLower === 'half day') {
+                } else if (category === 'halfDay') {
                     stats.halfDay += 1;
-                } else if (status === 'Sun' || status === 'Sat' || statusLower.includes('weekly off') || statusLower === 'wo') {
+                } else if (category === 'weeklyOff') {
                     stats.weeklyOff += 1;
-                } else if (statusLower.includes('late') || statusLower.includes('overtime')) {
-                    // Late/Overtime counts as present
+                } else if (category === 'present') {
                     stats.present += 1;
+                } else if (category === 'absent') {
+                    stats.absent += 1;
                 }
 
-                const otHrs = parseFloat(record.overtime_hours);
+                const otHrs = parseFloat(record.overtime_hours ?? record.ot_hours ?? record.overtime ?? 0);
                 if (!isNaN(otHrs) && otHrs > 0) {
                     stats.overtimeHrs += otHrs;
                 }
@@ -1131,6 +1109,32 @@ const MobileReports = () => {
             dates
         };
     }, [previewData.cardRecords]);
+
+    const MV_TOTAL_COLUMNS_CONFIG = useMemo(() => [
+        { key: 'present', label: 'P', fullLabel: 'Present', width: 34, textCol: 'text-emerald-700 dark:text-emerald-400', bgCol: 'bg-emerald-50/80 dark:bg-emerald-950/40', getValue: (emp) => emp.stats?.present || 0 },
+        { key: 'absent', label: 'A', fullLabel: 'Absent', width: 34, textCol: 'text-rose-700 dark:text-rose-400', bgCol: 'bg-rose-50/80 dark:bg-rose-950/40', getValue: (emp) => emp.stats?.absent || 0 },
+        { key: 'missedPunch', label: 'MP', fullLabel: 'Missed Punch', width: 34, textCol: 'text-amber-700 dark:text-amber-400', bgCol: 'bg-amber-50/80 dark:bg-amber-950/40', getValue: (emp) => emp.stats?.missedPunch || 0 },
+        { key: 'leave', label: 'L', fullLabel: 'Leave', width: 34, textCol: 'text-sky-700 dark:text-sky-400', bgCol: 'bg-sky-50/80 dark:bg-sky-950/40', getValue: (emp) => emp.stats?.leave || 0 },
+        { key: 'halfDay', label: 'HD', fullLabel: 'Half Day', width: 34, textCol: 'text-indigo-700 dark:text-indigo-400', bgCol: 'bg-indigo-50/80 dark:bg-indigo-950/40', getValue: (emp) => emp.stats?.halfDay || 0 },
+        { key: 'weeklyOff', label: 'WO', fullLabel: 'Weekly Off', width: 34, textCol: 'text-slate-600 dark:text-slate-400', bgCol: 'bg-slate-100 dark:bg-slate-800', getValue: (emp) => emp.stats?.weeklyOff || 0 },
+        { key: 'overtime', label: 'OT (h)', fullLabel: 'Overtime (Hours)', width: 40, textCol: 'text-purple-700 dark:text-purple-400', bgCol: 'bg-purple-50/80 dark:bg-purple-950/40', getValue: (emp) => emp.stats?.overtimeHrs ? emp.stats.overtimeHrs.toFixed(1) : '0.0' },
+    ], []);
+
+    const mvVisibleTotalColumns = useMemo(() => {
+        if (!showTotalAttendance) return [];
+        const filtered = MV_TOTAL_COLUMNS_CONFIG.filter(col => selectedAttendanceStatuses.includes(col.key));
+        let currentLeft = 125; // Mobile Employee col width
+        return filtered.map((col, index) => {
+            const left = currentLeft;
+            currentLeft += col.width;
+            const isLast = index === filtered.length - 1;
+            return {
+                ...col,
+                left,
+                isLast
+            };
+        });
+    }, [showTotalAttendance, selectedAttendanceStatuses, MV_TOTAL_COLUMNS_CONFIG]);
 
     return (
         <MobileDashboardLayout title={isEmployee ? "My Reports" : "Reports & Exports"}>
@@ -2155,6 +2159,82 @@ const MobileReports = () => {
                                         )}
                                     </div>
                                 )}
+
+                                {/* Attendance Records Status Filter Checkboxes */}
+                                <div className="col-span-2 space-y-2 pt-2 border-t border-slate-100 dark:border-white/5">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Attendance Records</label>
+                                        <div className="flex items-center gap-2 text-[10px]">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedAttendanceStatuses(ATTENDANCE_STATUS_OPTIONS.map(o => o.key))}
+                                                className="text-indigo-600 dark:text-indigo-400 font-bold"
+                                            >
+                                                All
+                                            </button>
+                                            <span className="text-slate-300 dark:text-slate-600">•</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedAttendanceStatuses(['present', 'absent'])}
+                                                className="text-indigo-600 dark:text-indigo-400 font-bold"
+                                            >
+                                                Default (P & A)
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-1.5 p-2 bg-slate-50 dark:bg-black/20 rounded-xl border border-slate-100 dark:border-white/5">
+                                        {ATTENDANCE_STATUS_OPTIONS.map(opt => {
+                                            const isChecked = selectedAttendanceStatuses.includes(opt.key);
+                                            return (
+                                                <label
+                                                    key={opt.key}
+                                                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all ${
+                                                        isChecked
+                                                            ? 'bg-white dark:bg-github-dark-subtle border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-white shadow-xs'
+                                                            : 'bg-transparent border-transparent text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                                                    }`}
+                                                    title={`${opt.label} (${opt.abbr}) - Click to toggle filter`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => {
+                                                            if (isChecked) {
+                                                                if (selectedAttendanceStatuses.length > 1) {
+                                                                    setSelectedAttendanceStatuses(selectedAttendanceStatuses.filter(k => k !== opt.key));
+                                                                }
+                                                            } else {
+                                                                setSelectedAttendanceStatuses([...selectedAttendanceStatuses, opt.key]);
+                                                            }
+                                                        }}
+                                                        className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                    <span className="text-[10px] font-bold truncate flex-1">{opt.label}</span>
+                                                    <span className={`text-[8px] font-black px-1 rounded ${opt.color}`} title={`${opt.label} (${opt.abbr})`}>{opt.abbr}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Toggle Total Attendance Section */}
+                                <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <BarChart2 size={14} className="text-indigo-500" />
+                                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Total Attendance Section</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTotalAttendance(!showTotalAttendance)}
+                                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                            showTotalAttendance
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-slate-200 text-slate-600 dark:bg-white/10 dark:text-slate-400'
+                                        }`}
+                                    >
+                                        {showTotalAttendance ? 'Visible' : 'Hidden'}
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     )}
@@ -2172,41 +2252,64 @@ const MobileReports = () => {
                                 <table className="text-left border-collapse" style={{ minWidth: 'max-content' }}>
                                     <thead className="sticky top-0 z-20">
                                         <tr className="bg-slate-50 dark:bg-github-dark-bg/60 border-b border-slate-100 dark:border-white/10">
-                                            <th className="px-4 py-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-github-dark-bg/60 z-30 min-w-[160px] border-r border-slate-100 dark:border-white/10" style={{ boxShadow: '1px 0 4px rgba(0,0,0,0.05)' }}>Employee</th>
+                                            <th
+                                                className={`px-3 py-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-[#161b22] z-30 w-[125px] min-w-[125px] max-w-[125px] ${
+                                                    mvVisibleTotalColumns.length > 0
+                                                        ? 'border-r border-slate-100 dark:border-white/10'
+                                                        : 'border-r-2 border-slate-200 dark:border-white/10'
+                                                }`}
+                                                style={mvVisibleTotalColumns.length === 0 ? { boxShadow: '3px 0 6px rgba(0,0,0,0.12)' } : {}}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span>Employee</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowTotalAttendance(!showTotalAttendance)}
+                                                        className="p-0.5 text-slate-400 hover:text-indigo-600 transition-colors"
+                                                        title={showTotalAttendance ? "Hide Totals" : "Show Totals"}
+                                                    >
+                                                        <BarChart2 size={11} className={showTotalAttendance ? "text-indigo-600 dark:text-indigo-400" : ""} />
+                                                    </button>
+                                                </div>
+                                            </th>
+
+                                            {/* Dynamic Visible Total Columns */}
+                                            {mvVisibleTotalColumns.map((col) => (
+                                                <th
+                                                    key={col.key}
+                                                    className={`py-1.5 px-0.5 text-center sticky z-30 w-[${col.width}px] min-w-[${col.width}px] max-w-[${col.width}px] ${
+                                                        col.isLast
+                                                            ? 'border-r-2 border-slate-200 dark:border-white/10'
+                                                            : 'border-r border-slate-100 dark:border-white/10'
+                                                    } ${col.bgCol} select-none`}
+                                                    style={{
+                                                        left: col.left,
+                                                        ...(col.isLast ? { boxShadow: '3px 0 6px rgba(0,0,0,0.12)' } : {})
+                                                    }}
+                                                    title={`${col.fullLabel} (${col.label}) - Total Summary`}
+                                                >
+                                                    <div className="text-[7px] uppercase text-slate-400 leading-none">Total</div>
+                                                    <div
+                                                        className={`text-xs font-black ${col.textCol} leading-tight mt-0.5`}
+                                                        title={`${col.fullLabel} (${col.label})`}
+                                                    >
+                                                        {col.label}
+                                                    </div>
+                                                </th>
+                                            ))}
+
+                                            {/* Calendar Dates */}
                                             {matrixData.dates.map(rawDate => {
                                                 const d = new Date(rawDate + 'T00:00:00Z');
+                                                const fullDateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
                                                 return (
-                                                    <th key={rawDate} className="py-1.5 px-0.5 text-center min-w-[44px]">
+                                                    <th key={rawDate} className="py-1.5 px-0.5 text-center min-w-[44px]" title={fullDateStr}>
                                                         <div className="text-[7px] uppercase text-slate-400 leading-none">{d.toLocaleString('en-US', { month: 'short' })}</div>
                                                         <div className="text-xs font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
                                                         <div className="text-[7px] uppercase text-slate-400 leading-none">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
                                                     </th>
                                                 );
                                             })}
-                                            <th className="py-1.5 px-1 text-center min-w-[40px] border-l border-slate-100 dark:border-white/10 bg-emerald-50/50 dark:bg-emerald-950/20">
-                                                <div className="text-[7px] uppercase text-slate-400 leading-none">Total</div>
-                                                <div className="text-xs font-black text-emerald-700 dark:text-emerald-400 leading-tight">P</div>
-                                            </th>
-                                            <th className="py-1.5 px-1 text-center min-w-[40px] bg-rose-50/50 dark:bg-rose-950/20">
-                                                <div className="text-[7px] uppercase text-slate-400 leading-none">Total</div>
-                                                <div className="text-xs font-black text-rose-700 dark:text-rose-400 leading-tight">A</div>
-                                            </th>
-                                            <th className="py-1.5 px-1 text-center min-w-[40px] bg-sky-50/50 dark:bg-sky-950/20">
-                                                <div className="text-[7px] uppercase text-slate-400 leading-none">Total</div>
-                                                <div className="text-xs font-black text-sky-700 dark:text-sky-400 leading-tight">L</div>
-                                            </th>
-                                            <th className="py-1.5 px-1 text-center min-w-[40px] bg-indigo-50/50 dark:bg-indigo-950/20">
-                                                <div className="text-[7px] uppercase text-slate-400 leading-none">Total</div>
-                                                <div className="text-xs font-black text-indigo-700 dark:text-indigo-400 leading-tight">HD</div>
-                                            </th>
-                                            <th className="py-1.5 px-1 text-center min-w-[40px] bg-slate-100/50 dark:bg-slate-800/40">
-                                                <div className="text-[7px] uppercase text-slate-400 leading-none">Total</div>
-                                                <div className="text-xs font-black text-slate-600 dark:text-slate-400 leading-tight">WO</div>
-                                            </th>
-                                            <th className="py-1.5 px-1 text-center min-w-[48px] bg-purple-50/50 dark:bg-purple-950/20">
-                                                <div className="text-[7px] uppercase text-slate-400 leading-none">Total</div>
-                                                <div className="text-xs font-black text-purple-700 dark:text-purple-400 leading-tight">OT (h)</div>
-                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 dark:divide-white/5">
@@ -2214,53 +2317,77 @@ const MobileReports = () => {
                                             const initials = emp.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
                                             return (
                                                 <tr key={emp.user_id} className="group active:bg-slate-50 dark:active:bg-white/5 transition-colors">
-                                                    <td className="px-3 py-3 sticky left-0 bg-white dark:bg-github-dark-subtle group-hover:bg-slate-50/80 dark:group-hover:bg-github-dark-bg/20 transition-colors z-20 border-r border-slate-100 dark:border-white/10" style={{ boxShadow: '1px 0 3px rgba(0,0,0,0.04)' }}>
+                                                    <td
+                                                        className={`px-3 py-3 sticky left-0 bg-white dark:bg-github-dark-subtle group-hover:bg-slate-50/80 dark:group-hover:bg-github-dark-bg/20 transition-colors z-20 w-[125px] min-w-[125px] max-w-[125px] ${
+                                                            mvVisibleTotalColumns.length > 0
+                                                                ? 'border-r border-slate-100 dark:border-white/10'
+                                                                : 'border-r-2 border-slate-200 dark:border-white/10'
+                                                        }`}
+                                                        style={mvVisibleTotalColumns.length === 0 ? { boxShadow: '3px 0 6px rgba(0,0,0,0.10)' } : {}}
+                                                    >
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-[9px] shadow-inner shrink-0">
                                                                 {initials || <User size={10} />}
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <span className="block font-bold text-slate-800 dark:text-white text-[10px] leading-tight truncate max-w-[105px]">{emp.user_name}</span>
-                                                                <span className="block text-[7px] font-medium text-slate-400 mt-0.5 truncate max-w-[105px]">{emp.department}</span>
+                                                                <span className="block font-bold text-slate-800 dark:text-white text-[10px] leading-tight truncate">{emp.user_name}</span>
+                                                                <span className="block text-[7px] font-medium text-slate-400 mt-0.5 truncate">{emp.department}</span>
                                                             </div>
                                                         </div>
                                                     </td>
+
+                                                    {/* Dynamic Visible Total Body Cells */}
+                                                    {mvVisibleTotalColumns.map((col) => (
+                                                        <td
+                                                            key={col.key}
+                                                            className={`px-0.5 py-2.5 text-center sticky z-20 w-[${col.width}px] min-w-[${col.width}px] max-w-[${col.width}px] ${
+                                                                col.isLast
+                                                                    ? 'border-r-2 border-slate-200 dark:border-white/10'
+                                                                    : 'border-r border-slate-100 dark:border-white/10'
+                                                            } bg-white dark:bg-github-dark-subtle group-hover:bg-slate-50/80 dark:group-hover:bg-github-dark-bg/20 transition-colors font-bold text-xs ${col.textCol}`}
+                                                            style={{
+                                                                left: col.left,
+                                                                ...(col.isLast ? { boxShadow: '3px 0 6px rgba(0,0,0,0.10)' } : {})
+                                                            }}
+                                                            title={`${emp.user_name}: ${col.getValue(emp)} ${col.fullLabel}`}
+                                                        >
+                                                            {col.getValue(emp)}
+                                                        </td>
+                                                    ))}
+
+                                                    {/* Calendar Dates */}
                                                     {matrixData.dates.map(rawDate => {
                                                         const record = emp.records[rawDate];
                                                         const status = record?.status || '-';
+                                                        const category = classifyAttendanceStatus(status);
+                                                        const isMatchingFilter = selectedAttendanceStatuses.includes(category);
                                                         const isNonClickableStatus = ['Sun', 'Sat', 'WEEK_OFF', 'Not Recorded', '-'].includes(status);
-                                                        const isClickable = !!record && !isNonClickableStatus;
+                                                        const isClickable = !!record && !isNonClickableStatus && isMatchingFilter;
+                                                        const fullForm = getStatusFullForm(status);
+                                                        const shortLabel = mvGetStatusLabel(status);
+
                                                         return (
                                                             <td key={rawDate} className="px-0.5 py-2.5 text-center">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => { if (isClickable) { setSelectedRecord(record); setIsDetailSidebarOpen(true); } }}
-                                                                    title={record ? `${status} - ${record.date}` : 'No data'}
-                                                                    className={`w-8 h-8 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${mvGetStatusColor(status)} ${isClickable ? 'cursor-pointer active:scale-90' : 'cursor-default'}`}
-                                                                >
-                                                                    {mvGetStatusLabel(status)}
-                                                                </button>
+                                                                {isMatchingFilter ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { if (isClickable) { setSelectedRecord(record); setIsDetailSidebarOpen(true); } }}
+                                                                        title={`${fullForm} (${shortLabel})`}
+                                                                        className={`w-8 h-8 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${mvGetStatusColor(status)} ${isClickable ? 'cursor-pointer active:scale-90' : 'cursor-default'}`}
+                                                                    >
+                                                                        {shortLabel}
+                                                                    </button>
+                                                                ) : (
+                                                                    <span
+                                                                        className="w-8 h-8 inline-flex items-center justify-center text-slate-300 dark:text-slate-600 text-[10px] font-bold select-none cursor-default"
+                                                                        title={`${fullForm} (Filtered out)`}
+                                                                    >
+                                                                        ·
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                         );
                                                     })}
-                                                    <td className="px-1 py-2.5 text-center border-l border-slate-100 dark:border-white/10 bg-emerald-50/20 dark:bg-emerald-950/10 font-bold text-xs text-emerald-700 dark:text-emerald-400">
-                                                        {emp.stats?.present || 0}
-                                                    </td>
-                                                    <td className="px-1 py-2.5 text-center bg-rose-50/20 dark:bg-rose-950/10 font-bold text-xs text-rose-700 dark:text-rose-400">
-                                                        {emp.stats?.absent || 0}
-                                                    </td>
-                                                    <td className="px-1 py-2.5 text-center bg-sky-50/20 dark:bg-sky-950/10 font-bold text-xs text-sky-700 dark:text-sky-400">
-                                                        {emp.stats?.leave || 0}
-                                                    </td>
-                                                    <td className="px-1 py-2.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10 font-bold text-xs text-indigo-700 dark:text-indigo-400">
-                                                        {emp.stats?.halfDay || 0}
-                                                    </td>
-                                                    <td className="px-1 py-2.5 text-center bg-slate-50 dark:bg-slate-800/20 font-bold text-xs text-slate-500 dark:text-slate-400">
-                                                        {emp.stats?.weeklyOff || 0}
-                                                    </td>
-                                                    <td className="px-1 py-2.5 text-center bg-purple-50/20 dark:bg-purple-950/10 font-bold text-xs text-purple-700 dark:text-purple-400">
-                                                        {emp.stats?.overtimeHrs ? emp.stats.overtimeHrs.toFixed(1) : '0.0'}
-                                                    </td>
                                                 </tr>
                                             );
                                         })}

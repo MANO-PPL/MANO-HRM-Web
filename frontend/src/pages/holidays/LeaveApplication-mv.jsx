@@ -30,6 +30,7 @@ import {
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
 import MobileSelect from '../../components/MobileSelect';
 import { AnimatePresence } from 'framer-motion';
+import AuditTrailTimeline from '../../components/AuditTrailTimeline';
 
 const AttachmentModal = ({ file, onClose }) => {
     if (!file) return null;
@@ -372,13 +373,29 @@ const LeaveApplication = () => {
             const res = await leaveService.updateLeaveStatus(selectedLeave.lr_id, payload);
             if (res.ok) {
                 toast.success(`Leave request ${actionStatus.toLowerCase()} successfully`);
+                const existingTrail = Array.isArray(selectedLeave.audit_trail)
+                    ? selectedLeave.audit_trail
+                    : (typeof selectedLeave.audit_trail === 'string'
+                        ? (() => { try { return JSON.parse(selectedLeave.audit_trail); } catch { return []; } })()
+                        : []);
+                const updatedTrail = res.request?.audit_trail || [
+                    ...existingTrail,
+                    {
+                        action: actionStatus.toLowerCase(),
+                        by: user?.user_id,
+                        by_name: user?.user_name || 'Admin',
+                        at: new Date().toISOString(),
+                        comments: adminAction.remarks || null
+                    }
+                ];
+
                 const updatedLeaves = leaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
-                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks }
+                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, audit_trail: updatedTrail }
                         : l
                 );
                 setLeaves(updatedLeaves);
-                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks });
+                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, audit_trail: updatedTrail });
                 setAdminAction({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
             }
         } catch (error) {
@@ -607,6 +624,9 @@ const LeaveApplication = () => {
                                     <p className="text-sm font-medium text-slate-800 dark:text-github-dark-text">{selectedLeave.admin_comment || "No remarks provided."}</p>
                                 </div>
                             )}
+
+                            {/* Section: Audit Trail & History */}
+                            <AuditTrailTimeline record={selectedLeave} compact={true} currentUserId={isAdmin ? null : selectedLeave.user_id} isEmployee={!isAdmin} />
 
                             {!isAdmin && selectedLeave.status === 'pending' && (
                                 <button

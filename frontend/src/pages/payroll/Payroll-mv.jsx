@@ -7,14 +7,8 @@ import {
     Download, 
     Settings, 
     Printer, 
-    DollarSign, 
-    Users, 
     CheckCircle, 
-    AlertCircle,
-    User,
-    ChevronDown,
-    FileText,
-    FileSpreadsheet
+    FileText
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -89,19 +83,6 @@ const PayrollMobile = () => {
 
         return { gross, deductions, net };
     }, [employees]);
-
-    const handleStartProcessing = () => {
-        setIsProcessingAll(true);
-        toast.info("Connecting to Razorpay gateway payouts...");
-        setTimeout(() => {
-            setIsProcessingAll(false);
-            setPayrollStatus('Released');
-            toast.success(`Payroll processed successfully for ${selectedMonth}!`);
-            if (!processedMonths.includes(selectedMonth)) {
-                setProcessedMonths([selectedMonth, ...processedMonths]);
-            }
-        }, 2000);
-    };
 
     const handleSaveSalary = (id) => {
         setEmployees(prev => prev.map(emp => {

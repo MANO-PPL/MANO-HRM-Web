@@ -45,21 +45,30 @@ export async function seed(db) {
         const [shiftId] = await db('org_shifts').insert({ org_id: orgId, shift_name: `Shift ${org}`, policy_rules: JSON.stringify({}) });
         ids[`shift${org}`] = shiftId;
 
-        // Payroll
-        await db('payroll_salary_history').insert([ids[`emp${org}`], ids[`emp2${org}`]].map((employee_id) => ({
-            employee_id, gross_monthly_salary: 50000, effective_from: `${year}-01-01`, created_by: ids[`admin${org}`],
-        })));
-        const [runId] = await db('payroll_runs').insert({ org_id: orgId, year, month: 1 });
+        // Payroll (v1)
+        const [pkgId] = await db('payroll_salary_packages').insert({
+            org_id: orgId, name: `Package ${org}`, description: 'Standard Package', packages_rules: JSON.stringify({}), is_active: 1,
+        });
+        ids[`pkg${org}`] = pkgId;
+        await db('payroll_salary_package_components').insert({
+            package_id: pkgId, name: 'Basic Salary', category: 'earning', calc_type: 'fixed', value: 50000, sort_order: 1, is_taxable: 1, is_active: 1,
+        });
+        for (const who of ['emp', 'emp2']) {
+            await db('payroll_employee_salary_assignments').insert({
+                employee_id: ids[`${who}${org}`], package_id: pkgId, effective_from: `${year}-01-01`,
+            });
+        }
+        const [runId] = await db('payroll_runs_v1').insert({
+            org_id: orgId, period_start: `${year}-01-01`, period_end: `${year}-01-31`, status: 'draft',
+        });
         ids[`run${org}`] = runId;
         for (const who of ['emp', 'emp2']) {
-            const [entryId] = await db('payroll_entries').insert({
-                run_id: runId, employee_id: ids[`${who}${org}`], gross_salary: 50000, net_salary: 45000,
-                salary_snapshot_json: '{}', attendance_snapshot_json: '{}', calculation_snapshot_json: '{}',
+            await db('payroll_lines').insert({
+                payroll_run_id: runId, employee_id: ids[`${who}${org}`], transaction_type: 'earning', name: 'Basic Salary', amount: 50000,
             });
-            ids[`entry_${who}${org}`] = entryId;
         }
-        const [pkgId] = await db('payroll_package_groups').insert({ org_id: orgId, package_name: `Package ${org}` });
-        ids[`pkg${org}`] = pkgId;
+        const [pkgGroupId] = await db('payroll_package_groups').insert({ org_id: orgId, package_name: `Package Group ${org}` });
+        ids[`pkgGroup${org}`] = pkgGroupId;
 
         // Leave: policy, rule, balances and requests (one by HR themselves)
         const [lpId] = await db('leave_policies').insert({ org_id: orgId, name: `Policy ${org}` });

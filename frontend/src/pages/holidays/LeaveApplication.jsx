@@ -499,14 +499,30 @@ const LeaveApplication = ({ mode, onSelectLeave, onLeavesChange, onActiveRangeCh
             const res = await leaveService.updateLeaveStatus(selectedLeave.lr_id, payload);
             if (res.ok) {
                 toast.success(`Leave request ${actionStatus.toLowerCase()} successfully`);
+                const existingTrail = Array.isArray(selectedLeave.audit_trail)
+                    ? selectedLeave.audit_trail
+                    : (typeof selectedLeave.audit_trail === 'string'
+                        ? (() => { try { return JSON.parse(selectedLeave.audit_trail); } catch { return []; } })()
+                        : []);
+                const updatedTrail = res.request?.audit_trail || [
+                    ...existingTrail,
+                    {
+                        action: actionStatus.toLowerCase(),
+                        by: user?.user_id,
+                        by_name: user?.user_name || 'Admin',
+                        at: new Date().toISOString(),
+                        comments: adminAction.remarks || null
+                    }
+                ];
+
                 // Update local state
                 const updatedAdminLeaves = adminLeaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
-                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage }
+                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage, audit_trail: updatedTrail }
                         : l
                 );
                 setAdminLeaves(updatedAdminLeaves);
-                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage });
+                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage, audit_trail: updatedTrail });
                 setAdminAction({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
             }
         } catch (error) {

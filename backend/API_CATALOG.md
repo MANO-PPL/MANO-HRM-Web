@@ -14,19 +14,19 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 ### Overall Metrics
 | Metric | Value |
 | :--- | :--- |
-| **Total API Endpoints** | **210** |
+| **Total API Endpoints** | **209** |
 | **Total Domain Modules** | **24** |
-| **GET Endpoints (Read & Query)** | **86** (40.2%) |
-| **POST Endpoints (Create & Actions)** | **77** (36.0%) |
-| **PUT Endpoints (Update & Mutate)** | **27** (12.6%) |
-| **DELETE Endpoints (Remove & Archive)**| **20** (9.3%) |
+| **GET Endpoints (Read & Query)** | **85** (40.7%) |
+| **POST Endpoints (Create & Actions)** | **77** (36.8%) |
+| **PUT Endpoints (Update & Mutate)** | **27** (12.9%) |
+| **DELETE Endpoints (Remove & Archive)**| **20** (9.6%) |
 | **PATCH Endpoints (Partial Updates)** | **4** (1.9%) |
 
 ### Access & Security Breakdown
 | Role / Access Level | Endpoint Count | Percentage |
 | :--- | :--- | :--- |
-| **Public Endpoints** (No Auth required) | **14** | 6.5% |
-| **Authenticated Users** (Employee / User JWT) | **111** | 51.9% |
+| **Public Endpoints** (No Auth required) | **14** | 6.7% |
+| **Authenticated Users** (Employee / User JWT) | **110** | 52.6% |
 | **Admin & HR Operations** (Elevated Privileges) | **80** | 37.4% |
 | **Super Admin Platform Operations** (Tenant / System Governance) | **9** | 4.2% |
 
@@ -37,7 +37,7 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 | # | Module / Feature Area | Base Route | Total APIs | GET | POST | PUT | DELETE | PATCH |
 | :-: | :--- | :--- | :-: | :-: | :-: | :-: | :-: | :-: |
 | 1 | **Authentication & Session** | `/auth` | **11** | 2 | 9 | 0 | 0 | 0 |
-| 2 | **Attendance & Geofencing** | `/attendance` | **18** | 8 | 7 | 1 | 0 | 2 |
+| 2 | **Attendance & Geofencing** | `/attendance` | **17** | 7 | 7 | 1 | 0 | 2 |
 | 3 | **Admin Administration, Users & Master Lookups** | `/admin` | **27** | 8 | 9 | 5 | 5 | 0 |
 | 4 | **Employees Directory** | `/employee` | **1** | 1 | 0 | 0 | 0 | 0 |
 | 5 | **Leave Management** | `/leaves` | **21** | 8 | 5 | 4 | 4 | 0 |
@@ -127,7 +127,6 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 | `GET` | `/attendance/records` | GET operation on /attendance/records | Authenticated |
 | `GET` | `/attendance/daily-summary/admin` | GET operation on /attendance/daily-summary/admin | Authenticated |
 | `GET` | `/attendance/daily-summary` | GET operation on /attendance/daily-summary | Authenticated |
-| `GET` | `/attendance/records/export` | GET operation on /attendance/records/export | Authenticated |
 | `POST` | `/attendance/correction-request` | POST operation on /attendance/correction-request | Authenticated |
 | `GET` | `/attendance/correction-requests` | GET operation on /attendance/correction-requests | Authenticated |
 | `GET` | `/attendance/correction-request/:acr_id` | GET operation on /attendance/correction-request/:acr_id | Authenticated |

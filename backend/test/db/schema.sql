@@ -789,6 +789,7 @@ CREATE TABLE `leave_request` (
   `reviewed_by` int unsigned DEFAULT NULL,
   `reviewed_at` timestamp NULL DEFAULT NULL,
   `admin_comment` varchar(255) DEFAULT NULL,
+  `audit_trail` json DEFAULT NULL,
   PRIMARY KEY (`lr_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `leave_requests` (
@@ -1046,6 +1047,99 @@ CREATE TABLE `payroll_settings` (
   PRIMARY KEY (`setting_id`),
   UNIQUE KEY `idx_org_settings` (`org_id`),
   CONSTRAINT `payroll_settings_org_id_foreign` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_settings_v1` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `currency` varchar(10) NOT NULL DEFAULT 'INR',
+  `payroll_frequency` varchar(20) NOT NULL DEFAULT 'monthly',
+  `rounding_method` varchar(20) NOT NULL DEFAULT 'nearest',
+  `rounding_precision` int NOT NULL DEFAULT '2',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_payroll_settings_v1_org` (`org_id`),
+  CONSTRAINT `fk_payroll_settings_v1_org` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_salary_packages` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `packages_rules` json NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_payroll_salary_packages_org_name` (`org_id`,`name`),
+  UNIQUE KEY `uq_payroll_salary_packages_id_org` (`id`,`org_id`),
+  CONSTRAINT `fk_payroll_salary_packages_org` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_salary_package_components` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `package_id` int unsigned NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `category` varchar(30) NOT NULL,
+  `calc_type` varchar(30) NOT NULL DEFAULT 'fixed',
+  `value` decimal(14,4) NOT NULL DEFAULT '0.0000',
+  `base_component_id` int unsigned DEFAULT NULL,
+  `sort_order` int NOT NULL DEFAULT '0',
+  `is_taxable` tinyint(1) NOT NULL DEFAULT '1',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_payroll_salary_package_components_pkg_name` (`package_id`,`name`),
+  UNIQUE KEY `uq_payroll_salary_package_components_pkg_id` (`package_id`,`id`),
+  KEY `fk_payroll_salary_package_components_base` (`package_id`,`base_component_id`),
+  CONSTRAINT `fk_payroll_salary_package_components_package` FOREIGN KEY (`package_id`) REFERENCES `payroll_salary_packages` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_employee_salary_assignments` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int unsigned NOT NULL,
+  `package_id` int unsigned NOT NULL,
+  `effective_from` date NOT NULL,
+  `effective_to` date DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_payroll_emp_salary_assignments_dates` (`employee_id`,`effective_from`,`effective_to`),
+  KEY `idx_payroll_emp_salary_assignments_pkg` (`package_id`),
+  CONSTRAINT `fk_payroll_emp_salary_assignments_emp` FOREIGN KEY (`employee_id`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `fk_payroll_emp_salary_assignments_pkg` FOREIGN KEY (`package_id`) REFERENCES `payroll_salary_packages` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_runs_v1` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `employee_id` int unsigned DEFAULT NULL,
+  `batch_name` varchar(150) DEFAULT NULL,
+  `period_start` date NOT NULL,
+  `period_end` date NOT NULL,
+  `status` enum('draft','processing','approved','paid') NOT NULL DEFAULT 'draft',
+  `paid_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `fk_payroll_runs_v1_emp` (`employee_id`),
+  KEY `fk_payroll_runs_v1_org` (`org_id`),
+  CONSTRAINT `fk_payroll_runs_v1_emp` FOREIGN KEY (`employee_id`) REFERENCES `core_users` (`user_id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_payroll_runs_v1_org` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_lines` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `payroll_run_id` int unsigned NOT NULL,
+  `employee_id` int unsigned NOT NULL,
+  `salary_package_component_id` int unsigned DEFAULT NULL,
+  `transaction_type` varchar(30) NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `amount` decimal(14,2) NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `fk_payroll_lines_run` (`payroll_run_id`),
+  KEY `fk_payroll_lines_emp` (`employee_id`),
+  KEY `fk_payroll_lines_comp` (`salary_package_component_id`),
+  CONSTRAINT `fk_payroll_lines_comp` FOREIGN KEY (`salary_package_component_id`) REFERENCES `payroll_salary_package_components` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_payroll_lines_emp` FOREIGN KEY (`employee_id`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `fk_payroll_lines_run` FOREIGN KEY (`payroll_run_id`) REFERENCES `payroll_runs_v1` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `perf_cycles` (
   `id` varchar(100) NOT NULL,

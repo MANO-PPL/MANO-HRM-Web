@@ -23,8 +23,17 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
         search: ''
     });
 
+    const isTrashOrInactiveUser = (u) => {
+        const isTrash = u.is_deleted === 1 || u.is_deleted === true || u.isDeleted === true || Boolean(u.deleted_at);
+        const isInactive = u.is_active === 0 || u.is_active === false || u.isActive === false;
+        return isTrash || isInactive;
+    };
+
     const designationsList = React.useMemo(() => {
-        const desgs = allUsers.map(u => u.designation).filter(d => d && d !== '-');
+        const desgs = allUsers
+            .filter(u => !isTrashOrInactiveUser(u))
+            .map(u => u.designation)
+            .filter(d => d && d !== '-');
         return ["All", ...new Set(desgs)].sort((a, b) => a.localeCompare(b));
     }, [allUsers]);
 
@@ -262,13 +271,18 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
 
         // Employee Consistency
         let dynamicTotalEmp = totalEmpCount;
-        let relevantUsers = allUsers;
+        let relevantUsers = allUsers.filter(u => !isTrashOrInactiveUser(u));
         if (filters.dept !== 'All') {
             relevantUsers = relevantUsers.filter(u => u.dept === filters.dept);
         }
 
         if (filters.desg && filters.desg !== 'All') {
             relevantUsers = relevantUsers.filter(u => u.designation === filters.desg);
+        }
+
+        if (filters.search && filters.search.trim()) {
+            const q = filters.search.toLowerCase().trim();
+            relevantUsers = relevantUsers.filter(u => u.name?.toLowerCase().includes(q));
         }
         dynamicTotalEmp = relevantUsers.length;
 
@@ -412,7 +426,8 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
                 }
 
                 const prevAvg = calculateAvgWorkHours(prevData);
-                processInsights(rawData, prevAvg, holidaySet, allUsers.length);
+                const activeUsers = allUsers.filter(u => !isTrashOrInactiveUser(u));
+                processInsights(rawData, prevAvg, holidaySet, activeUsers.length);
             }
         } catch (err) {
             console.error(err);
@@ -652,7 +667,12 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
                         </div>
                     </div>
                     <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1 custom-scrollbar max-h-[300px]">
-                        {consistencyData.map((user, i) => {
+                        {consistencyData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center text-slate-400 text-sm py-8">
+                                No active employee consistency data available
+                            </div>
+                        ) : (
+                            consistencyData.map((user, i) => {
                             const pct = user.pct;
                             let barColor = 'bg-emerald-500';
                             if (pct < 50) barColor = 'bg-red-500';
@@ -675,7 +695,8 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
                                     </div>
                                 </div>
                             );
-                        })}
+                        })
+                    )}
                     </div>
                 </div>
             </div>

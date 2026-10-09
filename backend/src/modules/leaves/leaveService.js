@@ -3,47 +3,170 @@ import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../../services/s3/s3Service.js';
 import EventBus from '../../utils/EventBus.js';
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
+import { toMySQLDate } from '../../utils/dateUtils.js';
 
-export async function getMyHistory({ user_id, org_id }) {
-    const leaves = await attendanceDB('leave_request as lr')
+export function formatLeaveAuditTrail(leave) {
+    if (!leave) return [];
+    let trail = [];
+    if (leave.audit_trail) {
+        try {
+            trail = typeof leave.audit_trail === 'string'
+                ? JSON.parse(leave.audit_trail)
+                : leave.audit_trail;
+        } catch (_) {
+            trail = [];
+        }
+    }
+
+    if (!Array.isArray(trail) || trail.length === 0) {
+        trail = [];
+        if (leave.applied_at || leave.user_id) {
+            trail.push({
+                action: 'submitted',
+                by: leave.user_id,
+                by_name: leave.user_name || 'Employee',
+                at: leave.applied_at ? new Date(leave.applied_at).toISOString() : new Date().toISOString()
+            });
+        }
+        const lowerStatus = String(leave.status || 'pending').toLowerCase();
+        if (['approved', 'rejected', 'cancelled'].includes(lowerStatus)) {
+            trail.push({
+                action: lowerStatus,
+                by: leave.reviewed_by || null,
+                by_name: leave.reviewer_name || (leave.reviewed_by ? 'Admin' : 'System'),
+                at: leave.reviewed_at ? new Date(leave.reviewed_at).toISOString() : (leave.applied_at ? new Date(leave.applied_at).toISOString() : new Date().toISOString()),
+                comments: leave.admin_comment || null
+            });
+        }
+    }
+
+    return Array.isArray(trail) ? trail : [];
+}
+
+
+function applyActiveUserFilter(query, prefix = 'u') {
+    return query
+        .where(function () {
+            this.where(`${prefix}.is_active`, 1).orWhere(`${prefix}.is_active`, true);
+        })
+        .where(function () {
+            this.where(`${prefix}.is_deleted`, 0).orWhere(`${prefix}.is_deleted`, false).orWhereNull(`${prefix}.is_deleted`);
+        });
+}
+
+function calculateBalance(b) {
+    const allocated = Number(b.allocated) > 0 ? Number(b.allocated) : Number(b.max_balance || 0);
+    const carried = Number(b.carried_forward || 0);
+    const total = allocated + carried;
+    const used = Number(b.used || 0);
+    return {
+        ...b,
+        allocated,
+        available: Math.max(0, total - used)
+    };
+}
+
+function baseBalanceQuery() {
+    return attendanceDB('leave_balances as lb')
+        .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
+        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id');
+}
+
+async function attachRulesToPolicies(policies, activeOnly = false) {
+    if (!policies.length) return [];
+    const policyIds = policies.map(p => p.lp_id);
+    let rulesQuery = attendanceDB('leave_policies_rules')
+        .whereIn('lp_id', policyIds)
+        .orderBy('name', 'asc');
+
+    if (activeOnly) {
+        rulesQuery = rulesQuery.andWhere({ is_active: 1 });
+    }
+
+    const rules = await rulesQuery;
+    const rulesMap = new Map();
+    for (const rule of rules) {
+        if (!rulesMap.has(rule.lp_id)) rulesMap.set(rule.lp_id, []);
+        rulesMap.get(rule.lp_id).push(rule);
+    }
+
+    return policies.map(p => ({
+        ...p,
+        rules: rulesMap.get(p.lp_id) || []
+    }));
+}
+
+async function areRulesReferenced(ruleIds) {
+    const ids = Array.isArray(ruleIds) ? ruleIds : [ruleIds];
+    if (!ids.length) return false;
+    const hasReq = await attendanceDB('leave_request').whereIn('rule_id', ids).first();
+    if (hasReq) return true;
+    const hasBal = await attendanceDB('leave_balances').whereIn('rule_id', ids).first();
+    return !!hasBal;
+}
+
+function baseLeaveQuery() {
+    return attendanceDB('leave_request as lr')
         .join('core_users as u', 'lr.user_id', 'u.user_id')
         .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
         .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
+        .leftJoin('core_users as reviewer', 'lr.reviewed_by', 'reviewer.user_id')
         .select(
             'lr.*',
             'u.user_name',
+            'u.email',
+            'u.phone_no',
             'u.profile_image_url',
-            'lpr.name as leave_type',
+            'u.is_active',
+            'u.is_deleted',
+            attendanceDB.raw('COALESCE(lpr.name, lr.leave_type, "Leave") as leave_type'),
             'lpr.code as leave_code',
-            'lp.name as policy_name'
-        )
+            'lp.name as policy_name',
+            'reviewer.user_name as reviewer_name'
+        );
+}
+
+async function populateLeaveMetadata(leaves = []) {
+    if (!leaves.length) return [];
+    const leaveIds = leaves.map(l => l.lr_id);
+    const attachments = await attendanceDB('leave_attachments').whereIn('leave_id', leaveIds);
+    const attachmentMap = new Map();
+
+    await Promise.all(attachments.map(async (a) => {
+        const { url } = await S3Service.getFileUrl({ key: a.file_key });
+        if (!attachmentMap.has(a.leave_id)) attachmentMap.set(a.leave_id, []);
+        attachmentMap.get(a.leave_id).push({ ...a, file_url: url });
+    }));
+
+    return leaves.map(leave => ({
+        ...leave,
+        attachments: attachmentMap.get(leave.lr_id) || [],
+        audit_trail: formatLeaveAuditTrail(leave)
+    }));
+}
+
+export async function getMyHistory({ user_id, org_id }) {
+    const leaves = await baseLeaveQuery()
         .where({ 'lr.user_id': user_id })
         .orderBy('lr.applied_at', 'desc');
 
-    const leaveIds = leaves.map(l => l.lr_id);
-    if (leaveIds.length > 0) {
-        const attachments = await attendanceDB('leave_attachments').whereIn('leave_id', leaveIds);
+    const populated = await populateLeaveMetadata(leaves);
 
-        const attachmentMap = new Map();
-
-        await Promise.all(attachments.map(async (a) => {
-            const { url } = await S3Service.getFileUrl({ key: a.file_key });
-            const item = { ...a, file_url: url };
-
-            if (!attachmentMap.has(a.leave_id)) {
-                attachmentMap.set(a.leave_id, []);
+    // In my leave requests for employees, show the approver as "Admin" instead of their personal name
+    return populated.map(leave => ({
+        ...leave,
+        reviewer_name: leave.reviewed_by ? 'Admin' : null,
+        audit_trail: (leave.audit_trail || []).map(event => {
+            const isSubmission = String(event.action).toLowerCase() === 'submitted';
+            if (!isSubmission) {
+                return {
+                    ...event,
+                    by_name: 'Admin'
+                };
             }
-            attachmentMap.get(a.leave_id).push(item);
-        }));
-
-        leaves.forEach(leave => {
-            leave.attachments = attachmentMap.get(leave.lr_id) || [];
-        });
-    } else {
-        leaves.forEach(l => l.attachments = []);
-    }
-
-    return leaves;
+            return event;
+        })
+    }));
 }
 
 export async function submitLeaveRequest({ user_id, org_id, leave_type, start_date, end_date, reason, files }) {
@@ -58,48 +181,69 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
         throw { status: 400, message: "End date cannot be before start date" };
     }
 
-    // Resolve leave_type to rule_id
+    // Resolve leave_type to rule_id and human-readable leave_type string
     let resolvedRuleId = 0;
+    let resolvedLeaveTypeName = typeof leave_type === 'string' ? leave_type.trim() : '';
+
     const numericRuleId = Number(leave_type);
     if (!isNaN(numericRuleId) && numericRuleId > 0) {
         resolvedRuleId = numericRuleId;
-    } else if (typeof leave_type === 'string' && leave_type.trim().length > 0) {
+        const rule = await attendanceDB('leave_policies_rules').where({ rule_id: numericRuleId }).first();
+        if (rule) {
+            resolvedLeaveTypeName = rule.name;
+        }
+    } else if (resolvedLeaveTypeName) {
         // Find matching rule in organization's policy rules
-        const rule = await attendanceDB('leave_policies_rules as lpr')
+        let rule = await attendanceDB('leave_policies_rules as lpr')
             .join('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
             .where({ 'lp.org_id': org_id })
             .where(builder => {
-                builder.where('lpr.name', 'like', leave_type.trim())
-                       .orWhere('lpr.code', 'like', leave_type.trim());
+                builder.where('lpr.name', 'like', resolvedLeaveTypeName)
+                       .orWhere('lpr.code', 'like', resolvedLeaveTypeName);
             })
-            .select('lpr.rule_id')
+            .select('lpr.rule_id', 'lpr.name')
             .first();
+
+        if (!rule) {
+            rule = await attendanceDB('leave_policies_rules')
+                .where(builder => {
+                    builder.where('name', 'like', resolvedLeaveTypeName)
+                           .orWhere('code', 'like', resolvedLeaveTypeName);
+                })
+                .select('rule_id', 'name')
+                .first();
+        }
 
         if (rule) {
             resolvedRuleId = rule.rule_id;
+            resolvedLeaveTypeName = rule.name;
         } else {
             // Fallback heuristics (e.g. "Casual Leave" -> CL, "Sick Leave" -> SL)
             let searchCode = '';
-            const typeLower = leave_type.toLowerCase();
+            const typeLower = resolvedLeaveTypeName.toLowerCase();
             if (typeLower.includes('casual')) searchCode = 'CL';
             else if (typeLower.includes('sick')) searchCode = 'SL';
+            else if (typeLower.includes('med')) searchCode = 'MED';
 
             if (searchCode) {
-                const fallbackRule = await attendanceDB('leave_policies_rules as lpr')
-                    .join('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-                    .where({ 'lp.org_id': org_id, 'lpr.code': searchCode })
-                    .select('lpr.rule_id')
+                const fallbackRule = await attendanceDB('leave_policies_rules')
+                    .where({ code: searchCode })
+                    .select('rule_id', 'name')
                     .first();
                 if (fallbackRule) {
                     resolvedRuleId = fallbackRule.rule_id;
+                    resolvedLeaveTypeName = fallbackRule.name;
                 }
             }
         }
     }
 
-    const formatSQLDate = (d) => d.toISOString().split('T')[0];
-    const sqlStart = formatSQLDate(start);
-    const sqlEnd = formatSQLDate(end);
+    if (!resolvedLeaveTypeName) {
+        resolvedLeaveTypeName = 'Leave';
+    }
+
+    const sqlStart = toMySQLDate(start);
+    const sqlEnd = toMySQLDate(end);
 
     const overlap = await attendanceDB('leave_request')
         .where({ user_id })
@@ -124,12 +268,16 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
     const [insertId] = await attendanceDB('leave_request').insert({
         user_id,
         rule_id: resolvedRuleId,
+        leave_type: resolvedLeaveTypeName,
         start_date: sqlStart,
         end_date: sqlEnd,
         total_days: totalDays,
         reason,
         status: 'pending',
-        applied_at: attendanceDB.fn.now()
+        applied_at: attendanceDB.fn.now(),
+        audit_trail: JSON.stringify([
+            { action: 'submitted', by: user_id, at: new Date().toISOString() }
+        ])
     });
 
     let responseAttachments = [];
@@ -216,14 +364,8 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
         const employeeName = employee?.user_name || 'An employee';
         const statusLabel = wasApproved ? 'approved' : 'pending';
 
-        const formatSQLDate = (d) => {
-            if (!d) return '';
-            if (typeof d === 'string') return d.split('T')[0];
-            if (d instanceof Date) return d.toISOString().split('T')[0];
-            return String(d);
-        };
-        const startFormatted = formatSQLDate(request.start_date);
-        const endFormatted = formatSQLDate(request.end_date);
+        const startFormatted = toMySQLDate(request.start_date);
+        const endFormatted = toMySQLDate(request.end_date);
 
         const admins = await attendanceDB('core_users')
             .where({ org_id, is_deleted: 0, is_active: 1 })
@@ -249,77 +391,19 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
 }
 
 export async function getPendingRequests({ org_id }) {
-    const requests = await attendanceDB('leave_request as lr')
-        .join('core_users as u', 'lr.user_id', 'u.user_id')
-        .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .select(
-            'lr.*',
-            'u.user_name', 'u.email', 'u.phone_no', 'u.profile_image_url',
-            'lpr.name as leave_type',
-            'lpr.code as leave_code',
-            'lp.name as policy_name'
-        )
+    let query = baseLeaveQuery()
         .where('u.org_id', org_id)
-        .where(function () {
-            this.where('u.is_active', 1).orWhere('u.is_active', true);
-        })
-        .where(function () {
-            this.where('u.is_deleted', 0).orWhere('u.is_deleted', false).orWhereNull('u.is_deleted');
-        })
-        .where('lr.status', 'pending')
-        .orderBy('lr.applied_at', 'asc');
-
-    const leaveIds = requests.map(l => l.lr_id);
-    if (leaveIds.length > 0) {
-        const attachments = await attendanceDB('leave_attachments').whereIn('leave_id', leaveIds);
-        const attachmentMap = new Map();
-
-        await Promise.all(attachments.map(async (a) => {
-            const { url } = await S3Service.getFileUrl({ key: a.file_key });
-            const item = { ...a, file_url: url };
-
-            if (!attachmentMap.has(a.leave_id)) {
-                attachmentMap.set(a.leave_id, []);
-            }
-            attachmentMap.get(a.leave_id).push(item);
-        }));
-
-        requests.forEach(req => {
-            req.attachments = attachmentMap.get(req.lr_id) || [];
-        });
-    }
-
-    return requests;
+        .where('lr.status', 'pending');
+    query = applyActiveUserFilter(query, 'u');
+    const requests = await query.orderBy('lr.applied_at', 'asc');
+    return populateLeaveMetadata(requests);
 }
 
 export async function getAdminHistory({ org_id, user_id, status, start_date, end_date, include_inactive }) {
-    let query = attendanceDB('leave_request as lr')
-        .join('core_users as u', 'lr.user_id', 'u.user_id')
-        .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .select(
-            'lr.*',
-            'u.user_name',
-            'u.email',
-            'u.phone_no',
-            'u.profile_image_url',
-            'u.is_active',
-            'u.is_deleted',
-            'lpr.name as leave_type',
-            'lpr.code as leave_code',
-            'lp.name as policy_name'
-        )
-        .where('u.org_id', org_id);
+    let query = baseLeaveQuery().where('u.org_id', org_id);
 
     if (!include_inactive || include_inactive === 'false') {
-        query = query
-            .where(function () {
-                this.where('u.is_active', 1).orWhere('u.is_active', true);
-            })
-            .where(function () {
-                this.where('u.is_deleted', 0).orWhere('u.is_deleted', false).orWhereNull('u.is_deleted');
-            });
+        query = applyActiveUserFilter(query, 'u');
     }
 
     if (user_id) query = query.where('lr.user_id', user_id);
@@ -328,28 +412,7 @@ export async function getAdminHistory({ org_id, user_id, status, start_date, end
     if (end_date) query = query.where('lr.end_date', '<=', end_date);
 
     const history = await query.orderBy('lr.applied_at', 'desc');
-
-    const leaveIds = history.map(l => l.lr_id);
-    if (leaveIds.length > 0) {
-        const attachments = await attendanceDB('leave_attachments').whereIn('leave_id', leaveIds);
-        const attachmentMap = new Map();
-
-        await Promise.all(attachments.map(async (a) => {
-            const { url } = await S3Service.getFileUrl({ key: a.file_key });
-            const item = { ...a, file_url: url };
-
-            if (!attachmentMap.has(a.leave_id)) {
-                attachmentMap.set(a.leave_id, []);
-            }
-            attachmentMap.get(a.leave_id).push(item);
-        }));
-
-        history.forEach(h => {
-            h.attachments = attachmentMap.get(h.lr_id) || [];
-        });
-    }
-
-    return history;
+    return populateLeaveMetadata(history);
 }
 
 export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_percentage, admin_comment, reviewed_by }) {
@@ -375,20 +438,48 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
 
     // Status change and balance adjustment are applied atomically, with the
     // request row locked so concurrent reviews cannot double-count the balance.
+    let statusChanged = false;
     await attendanceDB.transaction(async (trx) => {
         const request = await trx('leave_request').where({ lr_id: id }).forUpdate().first();
-        const previousStatus = request.status;
+        if (!request) {
+            throw { status: 404, message: "Request not found" };
+        }
+        const previousStatus = (request.status || '').toLowerCase();
+
+        // Idempotency: if request is already in target status (e.g. concurrent approval),
+        // preserve the existing state and avoid double balance deduction.
+        if (previousStatus === lowerStatus) {
+            return;
+        }
+        statusChanged = true;
+
+        const auditTrail = formatLeaveAuditTrail(request);
+        const reviewer = await trx('core_users').where({ user_id: reviewed_by }).select('user_name').first();
+
+        auditTrail.push({
+            action: lowerStatus,
+            by: reviewed_by,
+            by_name: reviewer?.user_name || 'Admin',
+            at: new Date().toISOString(),
+            comments: admin_comment || null
+        });
 
         const updateData = {
             status: lowerStatus,
-            admin_comment,
             reviewed_by,
-            reviewed_at: trx.fn.now()
+            reviewed_at: trx.fn.now(),
+            audit_trail: JSON.stringify(auditTrail)
         };
 
+        if (admin_comment !== undefined) {
+            updateData.admin_comment = admin_comment;
+        }
+
         if (lowerStatus === 'approved') {
-            updateData.pay_type = pay_type;
-            updateData.pay_percentage = pay_type === 'Partial' ? (pay_percentage || 50) : (pay_type === 'Paid' ? 100 : 0);
+            if (pay_type !== undefined) {
+                updateData.pay_type = pay_type;
+                updateData.pay_percentage = pay_type === 'Partial' ? (pay_percentage || 50) : (pay_type === 'Paid' ? 100 : 0);
+            }
         }
 
         await trx('leave_request')
@@ -453,12 +544,21 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
         // ────────────────────────────────────────────────────────────────────
     });
 
-    const updatedRequest = await attendanceDB('leave_request').where({ lr_id: id }).first();
+    const updatedRequest = await attendanceDB('leave_request as lr')
+        .join('core_users as u', 'lr.user_id', 'u.user_id')
+        .leftJoin('core_users as reviewer', 'lr.reviewed_by', 'reviewer.user_id')
+        .select('lr.*', 'u.user_name', 'reviewer.user_name as reviewer_name')
+        .where({ 'lr.lr_id': id })
+        .first();
 
     if (updatedRequest) {
-        PayrollCalculationService.triggerLeaveRecalculation(updatedRequest).catch(err => {
-            console.error("Failed to trigger background payroll recalculation for leave review:", err);
-        });
+        updatedRequest.audit_trail = formatLeaveAuditTrail(updatedRequest);
+
+        if (statusChanged) {
+            PayrollCalculationService.triggerLeaveRecalculation(updatedRequest).catch(err => {
+                console.error("Failed to trigger background payroll recalculation for leave review:", err);
+            });
+        }
     }
 
     return updatedRequest;
@@ -471,9 +571,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
 export async function getMyLeaveBalance({ user_id, org_id, year }) {
     const targetYear = year || new Date().getFullYear();
 
-    const balances = await attendanceDB('leave_balances as lb')
-        .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
+    const balances = await baseBalanceQuery()
         .select(
             'lb.*',
             'lpr.name as leave_type',
@@ -491,25 +589,13 @@ export async function getMyLeaveBalance({ user_id, org_id, year }) {
         .where({ 'lb.user_id': user_id, 'lb.year': targetYear })
         .orderBy('lpr.name', 'asc');
 
-    return balances.map(b => {
-        const allocated = Number(b.allocated) > 0 ? Number(b.allocated) : Number(b.max_balance || 0);
-        const carried = Number(b.carried_forward || 0);
-        const total = allocated + carried;
-        const used = Number(b.used || 0);
-        return {
-            ...b,
-            allocated,
-            available: Math.max(0, total - used)
-        };
-    });
+    return balances.map(calculateBalance);
 }
 
 export async function getEmployeeLeaveBalance({ org_id, user_id, year }) {
     const targetYear = year || new Date().getFullYear();
 
-    const balances = await attendanceDB('leave_balances as lb')
-        .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
+    const balances = await baseBalanceQuery()
         .join('core_users as u', 'lb.user_id', 'u.user_id')
         .select(
             'lb.*',
@@ -530,25 +616,13 @@ export async function getEmployeeLeaveBalance({ org_id, user_id, year }) {
         .where({ 'u.org_id': org_id, 'lb.user_id': user_id, 'lb.year': targetYear })
         .orderBy('lpr.name', 'asc');
 
-    return balances.map(b => {
-        const allocated = Number(b.allocated) > 0 ? Number(b.allocated) : Number(b.max_balance || 0);
-        const carried = Number(b.carried_forward || 0);
-        const total = allocated + carried;
-        const used = Number(b.used || 0);
-        return {
-            ...b,
-            allocated,
-            available: Math.max(0, total - used)
-        };
-    });
+    return balances.map(calculateBalance);
 }
 
 export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id, include_inactive }) {
     const targetYear = year || new Date().getFullYear();
 
-    let query = attendanceDB('leave_balances as lb')
-        .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
+    let query = baseBalanceQuery()
         .join('core_users as u', 'lb.user_id', 'u.user_id')
         .select(
             'lb.*',
@@ -565,13 +639,7 @@ export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id, incl
         .where({ 'u.org_id': org_id, 'lb.year': targetYear });
 
     if (!include_inactive || include_inactive === 'false') {
-        query = query
-            .where(function () {
-                this.where('u.is_active', 1).orWhere('u.is_active', true);
-            })
-            .where(function () {
-                this.where('u.is_deleted', 0).orWhere('u.is_deleted', false).orWhereNull('u.is_deleted');
-            });
+        query = applyActiveUserFilter(query, 'u');
     }
 
     if (rule_id) {
@@ -579,11 +647,7 @@ export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id, incl
     }
 
     const balances = await query.orderBy(['u.user_name', 'lpr.name']);
-
-    return balances.map(b => ({
-        ...b,
-        available: Math.max(0, (Number(b.allocated) + Number(b.carried_forward)) - Number(b.used))
-    }));
+    return balances.map(calculateBalance);
 }
 
 export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocated, carried_forward }) {
@@ -711,27 +775,7 @@ export async function getLeavePolicies({ org_id }) {
         .where({ org_id })
         .orderBy('created_at', 'desc');
 
-    // Attach rules to each policy for rich details
-    const policyIds = policies.map(p => p.lp_id);
-    let rules = [];
-    if (policyIds.length > 0) {
-        rules = await attendanceDB('leave_policies_rules')
-            .whereIn('lp_id', policyIds)
-            .orderBy('name', 'asc');
-    }
-
-    const rulesMap = new Map();
-    rules.forEach(rule => {
-        if (!rulesMap.has(rule.lp_id)) {
-            rulesMap.set(rule.lp_id, []);
-        }
-        rulesMap.get(rule.lp_id).push(rule);
-    });
-
-    return policies.map(p => ({
-        ...p,
-        rules: rulesMap.get(p.lp_id) || []
-    }));
+    return attachRulesToPolicies(policies);
 }
 
 export async function getMyLeavePolicies({ user_id, org_id }) {
@@ -759,23 +803,7 @@ export async function getMyLeavePolicies({ user_id, org_id }) {
         .whereIn('lp_id', lpIds)
         .andWhere({ is_active: 1 });
 
-    const rules = await attendanceDB('leave_policies_rules')
-        .whereIn('lp_id', lpIds)
-        .andWhere({ is_active: 1 })
-        .orderBy('name', 'asc');
-
-    const rulesMap = new Map();
-    rules.forEach(rule => {
-        if (!rulesMap.has(rule.lp_id)) {
-            rulesMap.set(rule.lp_id, []);
-        }
-        rulesMap.get(rule.lp_id).push(rule);
-    });
-
-    return policies.map(p => ({
-        ...p,
-        rules: rulesMap.get(p.lp_id) || []
-    }));
+    return attachRulesToPolicies(policies, true);
 }
 
 
@@ -851,16 +879,7 @@ export async function deleteLeavePolicy({ org_id, lp_id }) {
     const ruleIds = rules.map(r => r.rule_id);
 
     if (ruleIds.length > 0) {
-        // Check if any rule is referenced in leave_request or leave_balances
-        const hasRequests = await attendanceDB('leave_request')
-            .whereIn('rule_id', ruleIds)
-            .first();
-
-        const hasBalances = await attendanceDB('leave_balances')
-            .whereIn('rule_id', ruleIds)
-            .first();
-
-        if (hasRequests || hasBalances) {
+        if (await areRulesReferenced(ruleIds)) {
             throw {
                 status: 400,
                 message: "Cannot delete policy. One or more rules under this policy are referenced by existing leave requests or user balances. Consider setting is_active to 0 instead."
@@ -1036,16 +1055,7 @@ export async function deleteLeavePolicyRule({ org_id, lp_id, rule_id }) {
         throw { status: 404, message: "Policy rule not found" };
     }
 
-    // Check if referenced in requests or balances
-    const hasRequests = await attendanceDB('leave_request')
-        .where({ rule_id })
-        .first();
-
-    const hasBalances = await attendanceDB('leave_balances')
-        .where({ rule_id })
-        .first();
-
-    if (hasRequests || hasBalances) {
+    if (await areRulesReferenced([rule_id])) {
         throw {
             status: 400,
             message: "Cannot delete rule. It is currently referenced by existing leave requests or user balances. Consider setting is_active to 0 instead."
@@ -1139,4 +1149,62 @@ export async function assignPolicyToEmployees({ org_id, lp_id, user_ids, year })
     }
 
     return { ok: true, results };
+}
+
+/**
+ * Fetch approved leave requests within a date range for an organization or target user
+ */
+export async function getApprovedLeaves({ org_id, startDate, endDate, targetUserId }) {
+    const query = attendanceDB("leave_request as lr")
+        .join("core_users as u", "lr.user_id", "u.user_id")
+        .leftJoin("leave_policies_rules as lpr", "lr.rule_id", "lpr.rule_id")
+        .select(
+            "lr.lr_id",
+            "lr.user_id",
+            "lr.start_date",
+            "lr.end_date",
+            "lr.total_days",
+            "lr.status",
+            "lr.pay_percentage",
+            "lr.pay_type",
+            "lr.reason",
+            attendanceDB.raw('COALESCE(lpr.name, lr.leave_type, "Leave") as leave_type')
+        )
+        .where("u.org_id", org_id)
+        .whereRaw("LOWER(lr.status) = 'approved'")
+        .whereRaw("DATE(lr.start_date) <= ?", [endDate])
+        .whereRaw("DATE(lr.end_date) >= ?", [startDate]);
+
+    if (targetUserId) {
+        query.where("lr.user_id", targetUserId);
+    }
+    return query;
+}
+
+/**
+ * Check if a date falls within a user's approved leave range
+ */
+export const isDateInApprovedLeave = (userLeaves, dateStr) => {
+    if (!userLeaves || userLeaves.length === 0) return null;
+    return userLeaves.find(l => {
+        const s = typeof l.start_date === 'string' ? l.start_date.slice(0, 10) : new Date(l.start_date).toISOString().slice(0, 10);
+        const e = typeof l.end_date === 'string' ? l.end_date.slice(0, 10) : new Date(l.end_date).toISOString().slice(0, 10);
+        return dateStr >= s && dateStr <= e;
+    });
+};
+
+/**
+ * Check if a specific user is on approved leave on a given date (YYYY-MM-DD)
+ */
+export async function getUserApprovedLeaveOnDate({ user_id, date }) {
+    const sanitizedDate = typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10);
+    return attendanceDB("leave_request as lr")
+        .leftJoin("leave_policies_rules as lpr", "lr.rule_id", "lpr.rule_id")
+        .select("lr.*", attendanceDB.raw('COALESCE(lpr.name, lr.leave_type, "Leave") as leave_type'))
+        .where("lr.user_id", user_id)
+        .whereRaw("LOWER(lr.status) = 'approved'")
+        .where("lr.start_date", "<=", sanitizedDate)
+        .where("lr.end_date", ">=", sanitizedDate)
+        .first()
+        .catch(() => null);
 }

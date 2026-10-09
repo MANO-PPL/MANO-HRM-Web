@@ -12,6 +12,8 @@ import {
 import { toMySQLTime, toMySQLDate, toMySQLDateTime, calculateDurationHours, pad, DAY_NAMES, timeToMinutes } from '../../utils/dateUtils.js';
 import { safeJsonParse } from '../../utils/dataUtils.js';
 import { formatDateInTimezone } from '../../utils/timezoneUtils.js';
+import { getApprovedLeaves } from '../../modules/leaves/leaveService.js';
+import { getHolidays } from '../../modules/holidays/holidayService.js';
 
 /**
  * Status Evaluation Service
@@ -784,20 +786,11 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             .where('date', '<=', date_to)
             .modify(qb => { if (user_id) qb.where('user_id', user_id); })
             .catch(() => []),
-        attendanceDB('org_holidays')
-            .where('org_id', org_id)
-            .where('holiday_date', '>=', date_from)
-            .where('holiday_date', '<=', date_to),
-        attendanceDB('leave_request as lr')
-            .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
-            .select('lr.*', 'lpr.name as leave_type')
-            .whereRaw('LOWER(lr.status) = ?', ['approved'])
-            .where('lr.start_date', '<=', date_to)
-            .where('lr.end_date', '>=', date_from)
-            .modify(qb => {
-                if (user_id) qb.where('lr.user_id', user_id);
-                else qb.whereIn('lr.user_id', users.map(u => u.user_id));
-            })
+        getHolidays(org_id).then(hols => (hols || []).filter(h => {
+            const d = typeof h.holiday_date === 'string' ? h.holiday_date.slice(0, 10) : new Date(h.holiday_date).toISOString().slice(0, 10);
+            return (!date_from || d >= date_from) && (!date_to || d <= date_to);
+        })),
+        getApprovedLeaves({ org_id, startDate: date_from, endDate: date_to, targetUserId: user_id })
     ]);
 
     // 3. Index data for O(1) lookups

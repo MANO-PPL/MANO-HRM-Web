@@ -91,14 +91,6 @@ router.get("/daily-summary",
   AttendanceController.getUserDailySummary
 );
 
-/**
- * GET /attendance/records/export
- * Export user's attendance records for a month as Excel
- */
-router.get("/records/export", 
-  authenticateJWT, 
-  AttendanceController.exportRecords
-);
 
 /**
  * GET /attendance/my-shift

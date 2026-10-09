@@ -52,9 +52,9 @@ const LeaveHistoryTable = ({
                                     >
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col gap-0.5">
-                                                <span className="font-semibold text-sm text-slate-800 dark:text-github-dark-text">{leave.policy_name || leave.leave_type || 'Leave'}</span>
-                                                {leave.leave_type && leave.policy_name && (
-                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">{leave.leave_type}</span>
+                                                <span className="font-semibold text-sm text-slate-800 dark:text-github-dark-text">{leave.leave_type || leave.policy_name || 'Leave'}</span>
+                                                {leave.policy_name && leave.policy_name !== leave.leave_type && (
+                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">{leave.policy_name}</span>
                                                 )}
                                                 {leave.leave_code && (
                                                     <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 w-fit">{leave.leave_code}</span>

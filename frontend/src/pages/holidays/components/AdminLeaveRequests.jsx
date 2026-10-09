@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calendar, CheckCircle, XCircle, Paperclip, ChevronDown, FileText, ExternalLink } from 'lucide-react';
+import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
 
 const AdminLeaveRequests = ({
     searchQuery,
@@ -61,9 +62,7 @@ const AdminLeaveRequests = ({
                                             <p className="text-xs text-slate-500 dark:text-github-dark-muted font-normal">{request.email}</p>
                                         </div>
                                     </div>
-                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full text-slate-600 bg-slate-50 dark:text-github-dark-muted dark:bg-github-dark-subtle">
-                                        {request.leave_type}
-                                    </span>
+                                    
                                 </div>
                                 <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted mt-3">
                                     <div className="flex items-center gap-1 text-[11px] font-normal text-slate-500">
@@ -293,6 +292,9 @@ const AdminLeaveRequests = ({
                                             </>
                                         )}
                                     </div>
+
+                                    {/* Section: Audit Trail & History */}
+                                    <AuditTrailTimeline record={selectedLeave} />
                                 </div>
                             </div>
                         </div>

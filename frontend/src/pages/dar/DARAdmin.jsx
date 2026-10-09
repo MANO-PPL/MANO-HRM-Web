@@ -48,16 +48,27 @@ const DARAdmin = ({ embedded = false, activeTab: propActiveTab, setActiveTab: pr
         // Fetch total employees count & list
         const fetchUsers = async () => {
             try {
-                const res = await api.get('/admin/users');
+                const res = await api.get('/admin/users', { params: { active_only: true } });
                 if (res.data.success) {
-                    setAllUsers(res.data.users.map(u => ({
-                        userId: u.user_id,
-                        name: u.user_name,
-                        dept: u.dept_name,
-                        shift: u.shift_name,
-                        role: u.user_type,
-                        designation: u.desg_name || 'N/A'
-                    })));
+                    setAllUsers(res.data.users
+                        .filter(u => {
+                            const isTrash = u.is_deleted === 1 || u.is_deleted === true || Boolean(u.deleted_at);
+                            const isInactive = u.is_active === 0 || u.is_active === false;
+                            return !isTrash && !isInactive;
+                        })
+                        .map(u => ({
+                            userId: u.user_id,
+                            name: u.user_name,
+                            dept: u.dept_name,
+                            shift: u.shift_name,
+                            role: u.user_type,
+                            designation: u.desg_name || 'N/A',
+                            isActive: u.is_active === 1 || u.is_active === true,
+                            isDeleted: u.is_deleted === 1 || u.is_deleted === true || Boolean(u.deleted_at),
+                            is_active: u.is_active,
+                            is_deleted: u.is_deleted
+                        }))
+                    );
                 }
             } catch (e) {
                 console.error("Failed to fetch users", e);
