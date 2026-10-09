@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { useAuth } from '../../context/AuthContext';
+import { formatPlatformDate } from '../../utils/dateUtils';
 import { toast } from 'react-toastify';
 import MonthPicker from '../../components/MonthPicker';
 import MobileDatePicker from '../../components/MobileDatePicker';
@@ -2301,7 +2302,7 @@ const MobileReports = () => {
                                             {/* Calendar Dates */}
                                             {matrixData.dates.map(rawDate => {
                                                 const d = new Date(rawDate + 'T00:00:00Z');
-                                                const fullDateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+                                                const fullDateStr = formatPlatformDate(rawDate);
                                                 return (
                                                     <th key={rawDate} className="py-1.5 px-0.5 text-center min-w-[44px]" title={fullDateStr}>
                                                         <div className="text-[7px] uppercase text-slate-400 leading-none">{d.toLocaleString('en-US', { month: 'short' })}</div>

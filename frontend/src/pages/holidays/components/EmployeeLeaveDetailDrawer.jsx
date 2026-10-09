@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, X, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
 import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const EmployeeLeaveDetailDrawer = ({
     isOpen,
@@ -94,13 +95,13 @@ const EmployeeLeaveDetailDrawer = ({
                         <div className="flex items-center justify-between px-4 py-3">
                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Start Date</span>
                             <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text">
-                                {new Date(sl.start_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                {formatPlatformDate(sl.start_date)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between px-4 py-3">
                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">End Date</span>
                             <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text">
-                                {new Date(sl.end_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                {formatPlatformDate(sl.end_date)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between px-4 py-3">
@@ -110,7 +111,7 @@ const EmployeeLeaveDetailDrawer = ({
                         <div className="flex items-center justify-between px-4 py-3">
                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Applied On</span>
                             <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text">
-                                {new Date(sl.applied_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                {formatPlatformDate(sl.applied_at || Date.now())}
                             </span>
                         </div>
                         {sl.status === 'approved' && sl.pay_type && (

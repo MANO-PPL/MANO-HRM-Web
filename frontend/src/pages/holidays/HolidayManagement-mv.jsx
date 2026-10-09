@@ -7,6 +7,7 @@ import { holidayService, parseLocalDate } from '../../services/holidayService';
 import { leaveService } from '../../services/leaveService';
 import api from '../../services/api';
 import DatePicker from '../../components/DatePicker';
+import { formatPlatformDate } from '../../utils/dateUtils';
 import { toast } from 'react-toastify';
 import {
     Calendar,
@@ -644,7 +645,7 @@ const HolidayManagement = () => {
                                                     <div className="flex items-center gap-2 mt-1">
                                                         <CalendarDays size={12} className="text-slate-400" />
                                                         <span className="text-[11px] font-medium text-slate-500">
-                                                            {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                            {formatPlatformDate(leave.start_date)} - {formatPlatformDate(leave.end_date)}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -726,7 +727,7 @@ const HolidayManagement = () => {
                                                         <p className="text-[11px] font-semibold text-slate-500">{req.leave_type}</p>
                                                         <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
                                                             <CalendarDays size={12} />
-                                                            <span>{new Date(req.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                                            <span>{formatPlatformDate(req.start_date)}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -771,7 +772,7 @@ const HolidayManagement = () => {
                         <div className="text-center mb-6">
                             <h3 className="text-lg font-semibold text-slate-900 dark:text-github-dark-text">{holidayActionSheet.holiday_name}</h3>
                             <p className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">
-                                {parseLocalDate(holidayActionSheet.holiday_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                {formatPlatformDate(holidayActionSheet.holiday_date)}
                             </p>
                         </div>
 
@@ -1013,11 +1014,11 @@ const HolidayManagement = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
                                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">From</label>
-                                    <p className="text-base font-semibold text-slate-800 dark:text-white">{new Date(selectedLeaf.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                                    <p className="text-base font-semibold text-slate-800 dark:text-white">{formatPlatformDate(selectedLeaf.start_date)}</p>
                                 </div>
                                 <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
                                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">To</label>
-                                    <p className="text-base font-semibold text-slate-800 dark:text-white">{new Date(selectedLeaf.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                                    <p className="text-base font-semibold text-slate-800 dark:text-white">{formatPlatformDate(selectedLeaf.end_date)}</p>
                                 </div>
                             </div>
 
@@ -1155,7 +1156,7 @@ const HolidayManagement = () => {
                             </div>
                             <h3 className="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight px-4">{selectedHoliday.holiday_name}</h3>
                             <p className="text-sm font-semibold text-slate-400 mt-2">
-                                {parseLocalDate(selectedHoliday.holiday_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric' })}
+                                {formatPlatformDate(selectedHoliday.holiday_date)}
                             </p>
                         </div>
 

@@ -31,6 +31,7 @@ import ConfirmationModal from '../../components/modals/ConfirmationModal';
 import MobileSelect from '../../components/MobileSelect';
 import { AnimatePresence } from 'framer-motion';
 import AuditTrailTimeline from '../../components/AuditTrailTimeline';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const AttachmentModal = ({ file, onClose }) => {
     if (!file) return null;
@@ -493,7 +494,7 @@ const LeaveApplication = () => {
                                     <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted mt-3 pt-3 border-t border-slate-50 dark:border-github-dark-border">
                                         <div className="flex items-center gap-1">
                                             <Calendar size={12} />
-                                            {new Date(request.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                                            {formatPlatformDate(request.start_date)}
                                         </div>
                                         <span>{request.leave_type}</span>
                                     </div>
@@ -547,11 +548,11 @@ const LeaveApplication = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-3 rounded-lg border border-slate-100 dark:border-github-dark-border">
                                     <span className="text-xs text-slate-500 dark:text-github-dark-muted block mb-1">From</span>
-                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-github-dark-text">{new Date(selectedLeave.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-github-dark-text">{formatPlatformDate(selectedLeave.start_date)}</span>
                                 </div>
                                 <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-3 rounded-lg border border-slate-100 dark:border-github-dark-border">
                                     <span className="text-xs text-slate-500 dark:text-github-dark-muted block mb-1">To</span>
-                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-github-dark-text">{new Date(selectedLeave.end_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-github-dark-text">{formatPlatformDate(selectedLeave.end_date)}</span>
                                 </div>
                             </div>
 
@@ -886,7 +887,7 @@ const LeaveApplication = () => {
                                             <h4 className="font-bold text-slate-800 dark:text-github-dark-text">{leave.leave_type}</h4>
                                             <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
                                                 <Calendar size={12} />
-                                                <span>{new Date(leave.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                                <span>{formatPlatformDate(leave.start_date)} - {formatPlatformDate(leave.end_date)}</span>
                                             </div>
                                         </div>
                                         <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${leave.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :

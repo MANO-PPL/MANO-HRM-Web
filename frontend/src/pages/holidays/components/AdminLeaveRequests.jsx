@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar, CheckCircle, XCircle, Paperclip, ChevronDown, FileText, ExternalLink } from 'lucide-react';
 import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const AdminLeaveRequests = ({
     searchQuery,
@@ -67,7 +68,7 @@ const AdminLeaveRequests = ({
                                 <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted mt-3">
                                     <div className="flex items-center gap-1 text-[11px] font-normal text-slate-500">
                                         <Calendar size={12} />
-                                        {new Date(request.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                                        {formatPlatformDate(request.start_date)}
                                     </div>
                                     <div className={`flex items-center gap-1 font-medium capitalize ${request.status === 'approved' ? 'text-emerald-600' :
                                         request.status === 'rejected' ? 'text-red-600' : 'text-amber-600'
@@ -111,7 +112,7 @@ const AdminLeaveRequests = ({
                                         }`}></span>
                                     {selectedLeave.status}
                                 </div>
-                                <div className="text-xs text-slate-400 mt-2">Applied: {new Date(selectedLeave.applied_at || Date.now()).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                <div className="text-xs text-slate-400 mt-2">Applied: {formatPlatformDate(selectedLeave.applied_at || Date.now())}</div>
                             </div>
                         </div>
 
@@ -127,11 +128,11 @@ const AdminLeaveRequests = ({
                                     <div className="flex gap-10">
                                         <div>
                                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">From</span>
-                                            <span className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{new Date(selectedLeave.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                            <span className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{formatPlatformDate(selectedLeave.start_date)}</span>
                                         </div>
                                         <div>
                                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">To</span>
-                                            <span className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{new Date(selectedLeave.end_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                            <span className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{formatPlatformDate(selectedLeave.end_date)}</span>
                                         </div>
                                     </div>
 

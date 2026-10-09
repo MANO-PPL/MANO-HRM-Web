@@ -1,5 +1,6 @@
 import React from 'react';
 import { FileText, Trash2, Calendar } from 'lucide-react';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const LeaveHistoryTable = ({
     filteredLeaves = [],
@@ -71,7 +72,7 @@ const LeaveHistoryTable = ({
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{calculateDays(leave.start_date, leave.end_date)} Days</span>
                                                 <span className="text-[10px] text-slate-400 mt-0.5 font-normal">
-                                                    {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                    {formatPlatformDate(leave.start_date)} - {formatPlatformDate(leave.end_date)}
                                                 </span>
                                             </div>
                                         </td>
@@ -79,7 +80,7 @@ const LeaveHistoryTable = ({
                                             <p className="text-sm text-slate-600 dark:text-github-dark-muted truncate font-normal" title={leave.reason}>{leave.reason}</p>
                                         </td>
                                         <td className="px-6 py-4 text-xs text-slate-500 font-normal">
-                                            {new Date(leave.applied_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            {formatPlatformDate(leave.applied_at || Date.now())}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
