@@ -53,7 +53,14 @@ const Reports = () => {
     // Attendance View Filters State
     const [attendanceMonth, setAttendanceMonth] = useState(new Date().toISOString().slice(0, 7));
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
-    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState(isEmployee ? currentUserId : '');
+    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState(() => {
+        if (isEmployee) return currentUserId;
+        try {
+            return localStorage.getItem('reports_matrix_emp_id') || '';
+        } catch {
+            return '';
+        }
+    });
     const [attendanceWeek, setAttendanceWeek] = useState('');
     const [attendanceReportType, setAttendanceReportType] = useState('matrix_monthly');
     const [attendanceIsEmpDropdownOpen, setAttendanceIsEmpDropdownOpen] = useState(false);
@@ -104,8 +111,54 @@ const Reports = () => {
     const [hoveredRecord, setHoveredRecord] = useState(null);
     const [hoveredPosition, setHoveredPosition] = useState({ top: 0, left: 0 });
 
-    // Summary Columns Pin State: false = P&A sticky (default) + rest draggable; true = all totals sticky stationary
-    const [isAllTotalsSticky, setIsAllTotalsSticky] = useState(false);
+    // Filter Storage Keys to preserve user filters across browser refresh
+    const STORAGE_KEYS = useMemo(() => ({
+        PINNED_SUMMARY: 'reports_matrix_pinned_summary_keys',
+        ALL_STICKY: 'reports_matrix_all_totals_sticky',
+        DEPT: 'reports_matrix_dept_id',
+        DESG: 'reports_matrix_desg_id',
+        SHIFT: 'reports_matrix_shift_id',
+        EMP: 'reports_matrix_emp_id',
+    }), []);
+
+    // configuredPinnedKeys keeps track of the user's selected summary columns from the filter (persisted across refresh)
+    // Only columns selected in this list are ever shown in the table (unselected columns are never shown anywhere)
+    const [configuredPinnedKeys, setConfiguredPinnedKeys] = useState(() => {
+        try {
+            const saved = localStorage.getItem('reports_matrix_pinned_summary_keys');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) {
+            console.error('Failed to load pinned summary keys from storage', e);
+        }
+        return ['present', 'absent'];
+    });
+
+    // isAllTotalsSticky tracks whether "PINNED" mode or "DEFAULT" mode is active (persisted across refresh)
+    const [isAllTotalsSticky, setIsAllTotalsSticky] = useState(() => {
+        try {
+            const saved = localStorage.getItem('reports_matrix_all_totals_sticky');
+            if (saved !== null) return JSON.parse(saved);
+        } catch (e) {
+            console.error('Failed to load sticky mode from storage', e);
+        }
+        return false;
+    });
+
+    const handleToggleAllTotalsSticky = (value) => {
+        setIsAllTotalsSticky(prev => (typeof value === 'boolean' ? value : !prev));
+    };
+
+    const handleSetPinnedSummaryKeys = (newKeysOrFn) => {
+        setConfiguredPinnedKeys(prev => {
+            const next = typeof newKeysOrFn === 'function' ? newKeysOrFn(prev) : newKeysOrFn;
+            return next;
+        });
+        // Switching/adjusting columns in filter popover keeps view in default mode so new columns are draggable/previewed
+        setIsAllTotalsSticky(false);
+    };
 
     // Metadata lists
     const [employees, setEmployees] = useState([]);
@@ -113,8 +166,14 @@ const Reports = () => {
     const [designations, setDesignations] = useState([]);
     const [shifts, setShifts] = useState([]);
 
-    // Department states
-    const [attendanceDeptId, setAttendanceDeptId] = useState('');
+    // Department states (persisted across refresh)
+    const [attendanceDeptId, setAttendanceDeptId] = useState(() => {
+        try {
+            return localStorage.getItem('reports_matrix_dept_id') || '';
+        } catch {
+            return '';
+        }
+    });
     const [attendanceDeptSearchQuery, setAttendanceDeptSearchQuery] = useState('');
     const [attendanceIsDeptDropdownOpen, setAttendanceIsDeptDropdownOpen] = useState(false);
 
@@ -122,8 +181,14 @@ const Reports = () => {
     const [tableDeptSearchQuery, setTableDeptSearchQuery] = useState('');
     const [tableIsDeptDropdownOpen, setTableIsDeptDropdownOpen] = useState(false);
 
-    // Designation states
-    const [attendanceDesgId, setAttendanceDesgId] = useState('');
+    // Designation states (persisted across refresh)
+    const [attendanceDesgId, setAttendanceDesgId] = useState(() => {
+        try {
+            return localStorage.getItem('reports_matrix_desg_id') || '';
+        } catch {
+            return '';
+        }
+    });
     const [attendanceDesgSearchQuery, setAttendanceDesgSearchQuery] = useState('');
     const [attendanceIsDesgDropdownOpen, setAttendanceIsDesgDropdownOpen] = useState(false);
 
@@ -131,14 +196,87 @@ const Reports = () => {
     const [tableDesgSearchQuery, setTableDesgSearchQuery] = useState('');
     const [tableIsDesgDropdownOpen, setTableIsDesgDropdownOpen] = useState(false);
 
-    // Shift states
-    const [attendanceShiftId, setAttendanceShiftId] = useState('');
+    // Shift states (persisted across refresh)
+    const [attendanceShiftId, setAttendanceShiftId] = useState(() => {
+        try {
+            return localStorage.getItem('reports_matrix_shift_id') || '';
+        } catch {
+            return '';
+        }
+    });
     const [attendanceShiftSearchQuery, setAttendanceShiftSearchQuery] = useState('');
     const [attendanceIsShiftDropdownOpen, setAttendanceIsShiftDropdownOpen] = useState(false);
 
     const [tableShiftId, setTableShiftId] = useState('');
     const [tableShiftSearchQuery, setTableShiftSearchQuery] = useState('');
     const [tableIsShiftDropdownOpen, setTableIsShiftDropdownOpen] = useState(false);
+
+    // Persist filter selections to localStorage on changes so they do not reset on page refresh
+    useEffect(() => {
+        try {
+            localStorage.setItem(STORAGE_KEYS.PINNED_SUMMARY, JSON.stringify(configuredPinnedKeys));
+        } catch (e) {
+            console.error(e);
+        }
+    }, [configuredPinnedKeys, STORAGE_KEYS]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(STORAGE_KEYS.ALL_STICKY, JSON.stringify(isAllTotalsSticky));
+        } catch (e) {
+            console.error(e);
+        }
+    }, [isAllTotalsSticky, STORAGE_KEYS]);
+
+    useEffect(() => {
+        try {
+            if (attendanceDeptId) {
+                localStorage.setItem(STORAGE_KEYS.DEPT, attendanceDeptId);
+            } else {
+                localStorage.removeItem(STORAGE_KEYS.DEPT);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }, [attendanceDeptId, STORAGE_KEYS]);
+
+    useEffect(() => {
+        try {
+            if (attendanceDesgId) {
+                localStorage.setItem(STORAGE_KEYS.DESG, attendanceDesgId);
+            } else {
+                localStorage.removeItem(STORAGE_KEYS.DESG);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }, [attendanceDesgId, STORAGE_KEYS]);
+
+    useEffect(() => {
+        try {
+            if (attendanceShiftId) {
+                localStorage.setItem(STORAGE_KEYS.SHIFT, attendanceShiftId);
+            } else {
+                localStorage.removeItem(STORAGE_KEYS.SHIFT);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }, [attendanceShiftId, STORAGE_KEYS]);
+
+    useEffect(() => {
+        try {
+            if (!isEmployee) {
+                if (attendanceEmployeeId) {
+                    localStorage.setItem(STORAGE_KEYS.EMP, attendanceEmployeeId);
+                } else {
+                    localStorage.removeItem(STORAGE_KEYS.EMP);
+                }
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }, [attendanceEmployeeId, isEmployee, STORAGE_KEYS]);
 
     // Dropdown DOM refs for outside clicks
     const attendanceEmpDropdownRef = useRef(null);
@@ -748,6 +886,7 @@ const Reports = () => {
             const stats = {
                 present: 0,
                 absent: 0,
+                late: 0,
                 leave: 0,
                 halfDay: 0,
                 weeklyOff: 0,
@@ -772,6 +911,13 @@ const Reports = () => {
                     stats.present += 1;
                 } else if (category === 'absent') {
                     stats.absent += 1;
+                }
+
+                // Check late arrival
+                const lateMins = parseFloat(record.late_minutes ?? record.late_mins ?? record.late ?? 0);
+                const isLateStatus = typeof record.status === 'string' && record.status.toLowerCase().includes('late');
+                if ((!isNaN(lateMins) && lateMins > 0) || isLateStatus || record.is_late) {
+                    stats.late += 1;
                 }
 
                 const otHrs = parseFloat(record.overtime_hours ?? record.ot_hours ?? record.overtime ?? 0);
@@ -858,7 +1004,9 @@ const Reports = () => {
                             attendanceWeekDropdownRef={attendanceWeekDropdownRef}
 
                             isAllTotalsSticky={isAllTotalsSticky}
-                            setIsAllTotalsSticky={setIsAllTotalsSticky}
+                            setIsAllTotalsSticky={handleToggleAllTotalsSticky}
+                            pinnedSummaryKeys={configuredPinnedKeys}
+                            setPinnedSummaryKeys={handleSetPinnedSummaryKeys}
 
                             departments={departments}
                             attendanceDeptId={attendanceDeptId}
@@ -1002,7 +1150,8 @@ const Reports = () => {
                             onCellLeave={handleCellLeave}
                             onRecordClick={handleRecordClick}
                             isAllTotalsSticky={isAllTotalsSticky}
-                            onToggleAllTotalsSticky={() => setIsAllTotalsSticky(prev => !prev)}
+                            pinnedSummaryKeys={configuredPinnedKeys}
+                            onToggleAllTotalsSticky={handleToggleAllTotalsSticky}
                         />
                     </div>
                 ) : (

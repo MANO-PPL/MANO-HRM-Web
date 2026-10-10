@@ -1,8 +1,20 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, Search, User, Filter, RotateCcw, Building2, Briefcase, Clock } from 'lucide-react';
+import { ChevronDown, Search, User, Filter, RotateCcw, Building2, Briefcase, Clock, Pin } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import DatePicker from '../../../components/DatePicker';
 import { SummaryToggleIcon } from './SummaryToggleIcon';
+import HoverCard from '../../../components/HoverCard';
+
+const SUMMARY_FILTER_OPTIONS = [
+    { key: 'present', label: 'P', fullLabel: 'Present', description: 'Total days employee attended work' },
+    { key: 'absent', label: 'A', fullLabel: 'Absent', description: 'Total days marked absent' },
+    { key: 'late', label: 'LT', fullLabel: 'Late', description: 'Days with late arrival or punch-in' },
+    { key: 'missedPunch', label: 'MP', fullLabel: 'Missed Punch', description: 'Single punch recorded without checkout' },
+    { key: 'leave', label: 'L', fullLabel: 'Leave', description: 'Approved paid and unpaid leaves' },
+    { key: 'halfDay', label: 'HD', fullLabel: 'Half Day', description: 'Half day attendance records' },
+    { key: 'weeklyOff', label: 'WO', fullLabel: 'Weekly Off', description: 'Scheduled weekly off days' },
+    { key: 'overtime', label: 'OT', fullLabel: 'Overtime', description: 'Total overtime hours worked' },
+];
 
 const AttendanceViewToolbar = ({
     isEmployee = false,
@@ -19,36 +31,34 @@ const AttendanceViewToolbar = ({
     setAttendanceIsWeekDropdownOpen,
     attendanceWeekDropdownRef,
 
-    // Summary Columns Pin State: false = P&A sticky (default) + rest draggable at end; true = all totals sticky stationary
+    // Summary Columns Pin State
     isAllTotalsSticky = false,
     setIsAllTotalsSticky = () => {},
+    pinnedSummaryKeys = ['present', 'absent'],
+    setPinnedSummaryKeys = () => {},
 
     // Department
     departments = [],
     attendanceDeptId,
     setAttendanceDeptId,
-    attendanceDeptSearchQuery = '',
     setAttendanceDeptSearchQuery = () => {},
 
     // Designation
     designations = [],
     attendanceDesgId,
     setAttendanceDesgId,
-    attendanceDesgSearchQuery = '',
     setAttendanceDesgSearchQuery = () => {},
 
     // Shift
     shifts = [],
     attendanceShiftId,
     setAttendanceShiftId,
-    attendanceShiftSearchQuery = '',
     setAttendanceShiftSearchQuery = () => {},
 
     // Employee
     attendanceFilteredEmployees = [],
     attendanceEmployeeId,
     setAttendanceEmployeeId,
-    attendanceSelectedEmployeeName,
     attendanceEmpSearchQuery = '',
     setAttendanceEmpSearchQuery = () => {}
 }) => {
@@ -56,14 +66,16 @@ const AttendanceViewToolbar = ({
     const filterPopoverRef = useRef(null);
 
     // Calculate active filter count
+    const isCustomPinned = pinnedSummaryKeys.length !== 2 || !pinnedSummaryKeys.includes('present') || !pinnedSummaryKeys.includes('absent');
     const activeFilterCount = useMemo(() => {
         let count = 0;
         if (attendanceDeptId) count++;
         if (attendanceDesgId) count++;
         if (attendanceShiftId) count++;
         if (attendanceEmployeeId) count++;
+        if (isCustomPinned) count++;
         return count;
-    }, [attendanceDeptId, attendanceDesgId, attendanceShiftId, attendanceEmployeeId]);
+    }, [attendanceDeptId, attendanceDesgId, attendanceShiftId, attendanceEmployeeId, isCustomPinned]);
 
     const handleClearAllFilters = () => {
         setAttendanceDeptId('');
@@ -74,12 +86,17 @@ const AttendanceViewToolbar = ({
         setAttendanceDeptSearchQuery('');
         setAttendanceDesgSearchQuery('');
         setAttendanceShiftSearchQuery('');
+        setPinnedSummaryKeys(['present', 'absent']);
     };
 
     // Close popover on outside click
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (filterPopoverRef.current && !filterPopoverRef.current.contains(event.target)) {
+                // Ignore clicks originating inside a HoverCard portal
+                if (event.target?.closest && event.target.closest('[data-hover-card-portal]')) {
+                    return;
+                }
                 setIsFilterPopoverOpen(false);
             }
         };
@@ -151,31 +168,53 @@ const AttendanceViewToolbar = ({
                 </div>
             )}
 
-            {/* Summary Columns Stationary Toggle */}
-            <button
-                type="button"
-                onClick={() => setIsAllTotalsSticky(!isAllTotalsSticky)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer shadow-xs select-none ${
-                    isAllTotalsSticky
-                        ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-semibold'
-                        : 'bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-[#21262d]'
-                }`}
-                title={
-                    isAllTotalsSticky
-                        ? "All totals stationary on right. Click to make other summary columns draggable at end"
-                        : "Present & Absent sticky. Click to make ALL summary totals stationary on right"
+            {/* Summary Columns Stationary Toggle with custom HoverCard */}
+            <HoverCard
+                side="bottom"
+                align="center"
+                openDelay={100}
+                closeDelay={150}
+                className="w-64 p-3 rounded-xl shadow-2xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                content={
+                    <div className="space-y-1 text-left">
+                        <div className="flex items-center justify-between">
+                            <span className="font-semibold text-xs text-white">Summary Columns</span>
+                            <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+                                isAllTotalsSticky
+                                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                                    : 'bg-slate-700/50 text-slate-300'
+                            }`}>
+                                {isAllTotalsSticky ? 'PINNED' : 'DEFAULT'}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug">
+                            {isAllTotalsSticky
+                                ? "All filtered summary columns are pinned stationary on the right. Click to switch to default mode."
+                                : "Default mode: Only Present & Absent are pinned; other filtered columns are draggable at the end. Click to pin all."}
+                        </p>
+                    </div>
                 }
             >
-                <SummaryToggleIcon size={14} className={isAllTotalsSticky ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"} />
-                <span>Summary:</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                    isAllTotalsSticky
-                        ? 'bg-indigo-600 text-white dark:bg-indigo-500'
-                        : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                }`}>
-                    {isAllTotalsSticky ? 'ALL PINNED' : 'DEFAULT'}
-                </span>
-            </button>
+                <button
+                    type="button"
+                    onClick={() => setIsAllTotalsSticky(!isAllTotalsSticky)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer shadow-xs select-none ${
+                        isAllTotalsSticky
+                            ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-semibold'
+                            : 'bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-[#21262d]'
+                    }`}
+                >
+                    <SummaryToggleIcon size={14} className={isAllTotalsSticky ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"} />
+                    <span>Summary:</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                        isAllTotalsSticky
+                            ? 'bg-indigo-600 text-white dark:bg-indigo-500'
+                            : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                    }`}>
+                        {isAllTotalsSticky ? 'PINNED' : 'DEFAULT'}
+                    </span>
+                </button>
+            </HoverCard>
 
             {isEmployee ? (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl text-xs font-medium text-indigo-700 dark:text-indigo-300">
@@ -185,56 +224,141 @@ const AttendanceViewToolbar = ({
             ) : (
                 /* Unified Filter Popover Button */
                 <div className="relative" ref={filterPopoverRef}>
-                    <button
-                        type="button"
-                        onClick={() => setIsFilterPopoverOpen(!isFilterPopoverOpen)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer shadow-xs ${
-                            activeFilterCount > 0
-                                ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300'
-                                : 'bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-github-dark-text hover:bg-slate-50 dark:hover:bg-[#21262d]'
-                        }`}
-                        title="Filter by Department, Designation, Shift, or Employee"
+                    <HoverCard
+                        side="bottom"
+                        align="end"
+                        disabled={isFilterPopoverOpen}
+                        openDelay={120}
+                        closeDelay={150}
+                        className="w-80 p-3.5 rounded-xl shadow-2xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                        content={
+                            <div className="space-y-2.5 text-left">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-800 dark:border-[#30363d]">
+                                    <div className="flex items-center gap-2">
+                                        <Filter size={13} className="text-indigo-400" />
+                                        <span className="font-semibold text-xs text-white">Attendance Matrix Filters</span>
+                                    </div>
+                                    {activeFilterCount > 0 ? (
+                                        <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                            {activeFilterCount} Active
+                                        </span>
+                                    ) : (
+                                        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-800 text-slate-400">
+                                            Default
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="space-y-1">
+                                    <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">
+                                        Staff & Org Filters
+                                    </div>
+                                    <p className="text-[11px] text-slate-300 leading-snug">
+                                        Filter employees by Department, Designation, Shift, or specific individual.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-1.5 pt-2 border-t border-slate-800/80 dark:border-[#30363d]/80">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 text-[10px] uppercase font-semibold text-indigo-300 tracking-wider">
+                                            <Pin size={10} className="text-indigo-400" />
+                                            <span>Total Summary Column Filter</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 font-mono">
+                                            {pinnedSummaryKeys.length} / {SUMMARY_FILTER_OPTIONS.length} active
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 pt-0.5">
+                                        {pinnedSummaryKeys.map((k) => {
+                                            const opt = SUMMARY_FILTER_OPTIONS.find((o) => o.key === k);
+                                            return (
+                                                <span key={k} className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[9px] font-semibold border border-indigo-500/30">
+                                                    {opt?.label || k}: {opt?.fullLabel || k}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     >
-                        <Filter size={13} className={activeFilterCount > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} />
-                        <span>Filter</span>
-                        {activeFilterCount > 0 && (
-                            <span className="w-4 h-4 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
-                                {activeFilterCount}
-                            </span>
-                        )}
-                        <ChevronDown size={13} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isFilterPopoverOpen ? 'rotate-180' : ''}`} />
-                    </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsFilterPopoverOpen(!isFilterPopoverOpen)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer shadow-xs ${
+                                activeFilterCount > 0
+                                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300'
+                                    : 'bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-github-dark-text hover:bg-slate-50 dark:hover:bg-[#21262d]'
+                            }`}
+                        >
+                            <Filter size={13} className={activeFilterCount > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} />
+                            <span>Filter</span>
+                            {activeFilterCount > 0 && (
+                                <span className="w-4 h-4 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                                    {activeFilterCount}
+                                </span>
+                            )}
+                            <ChevronDown size={13} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isFilterPopoverOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    </HoverCard>
 
                     {isFilterPopoverOpen && (
                         <div className="absolute right-0 mt-2 w-84 sm:w-96 max-w-[95vw] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-2xl shadow-2xl z-50 p-4 sm:p-5 space-y-4 animate-in fade-in duration-150 text-left">
                             {/* Header */}
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#30363d]">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                        <Filter size={15} />
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-semibold text-xs text-slate-800 dark:text-github-dark-text">Filter Staff & Org</span>
-                                            {activeFilterCount > 0 && (
-                                                <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold rounded-full">
-                                                    {activeFilterCount} active
-                                                </span>
-                                            )}
+                                <HoverCard
+                                    side="top"
+                                    align="start"
+                                    interactive={false}
+                                    openDelay={150}
+                                    className="w-64 p-2.5 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                    content={
+                                        <div className="space-y-0.5 text-left">
+                                            <span className="font-semibold text-xs text-white">Filter Staff & Columns</span>
+                                            <p className="text-[10px] text-slate-300">Filters employee matrix rows and total summary column metrics.</p>
                                         </div>
-                                        <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mt-0.5">Filter employee matrix by department, role, or shift</p>
+                                    }
+                                >
+                                    <div className="flex items-center gap-2.5 cursor-help">
+                                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                            <Filter size={15} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-xs text-slate-800 dark:text-github-dark-text">Filter Staff & Org</span>
+                                                {activeFilterCount > 0 && (
+                                                    <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold rounded-full">
+                                                        {activeFilterCount} active
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mt-0.5">Filter employee matrix by department, role, or shift</p>
+                                        </div>
                                     </div>
-                                </div>
+                                </HoverCard>
                                 {activeFilterCount > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={handleClearAllFilters}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                                        title="Reset all filters to default"
+                                    <HoverCard
+                                        side="top"
+                                        align="end"
+                                        interactive={false}
+                                        openDelay={150}
+                                        className="w-56 p-2 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                        content={
+                                            <div className="space-y-0.5 text-left">
+                                                <span className="font-semibold text-xs text-white">Reset Filters</span>
+                                                <p className="text-[10px] text-slate-300">Resets staff filters and restores summary columns to default (Present & Absent).</p>
+                                            </div>
+                                        }
                                     >
-                                        <RotateCcw size={11} />
-                                        <span>Reset</span>
-                                    </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleClearAllFilters}
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                        >
+                                            <RotateCcw size={11} />
+                                            <span>Reset</span>
+                                        </button>
+                                    </HoverCard>
                                 )}
                             </div>
 
@@ -243,10 +367,24 @@ const AttendanceViewToolbar = ({
                                 <div className="grid grid-cols-2 gap-3">
                                     {/* Department */}
                                     <div className="space-y-1">
-                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
-                                            <Building2 size={11} className="text-slate-400" />
-                                            <span>Department</span>
-                                        </label>
+                                        <HoverCard
+                                            side="top"
+                                            align="start"
+                                            interactive={false}
+                                            openDelay={150}
+                                            className="w-52 p-2 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                            content={
+                                                <div className="text-left space-y-0.5">
+                                                    <span className="font-semibold text-xs text-white">Department Filter</span>
+                                                    <p className="text-[10px] text-slate-300">Filter records by specific department</p>
+                                                </div>
+                                            }
+                                        >
+                                            <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted cursor-help">
+                                                <Building2 size={11} className="text-slate-400" />
+                                                <span>Department</span>
+                                            </label>
+                                        </HoverCard>
                                         <div className="relative">
                                             <select
                                                 value={attendanceDeptId}
@@ -266,10 +404,24 @@ const AttendanceViewToolbar = ({
 
                                     {/* Designation */}
                                     <div className="space-y-1">
-                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
-                                            <Briefcase size={11} className="text-slate-400" />
-                                            <span>Designation</span>
-                                        </label>
+                                        <HoverCard
+                                            side="top"
+                                            align="start"
+                                            interactive={false}
+                                            openDelay={150}
+                                            className="w-52 p-2 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                            content={
+                                                <div className="text-left space-y-0.5">
+                                                    <span className="font-semibold text-xs text-white">Designation Filter</span>
+                                                    <p className="text-[10px] text-slate-300">Filter records by job role or title</p>
+                                                </div>
+                                            }
+                                        >
+                                            <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted cursor-help">
+                                                <Briefcase size={11} className="text-slate-400" />
+                                                <span>Designation</span>
+                                            </label>
+                                        </HoverCard>
                                         <div className="relative">
                                             <select
                                                 value={attendanceDesgId}
@@ -289,10 +441,24 @@ const AttendanceViewToolbar = ({
 
                                     {/* Shift */}
                                     <div className="space-y-1">
-                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
-                                            <Clock size={11} className="text-slate-400" />
-                                            <span>Shift</span>
-                                        </label>
+                                        <HoverCard
+                                            side="top"
+                                            align="start"
+                                            interactive={false}
+                                            openDelay={150}
+                                            className="w-52 p-2 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                            content={
+                                                <div className="text-left space-y-0.5">
+                                                    <span className="font-semibold text-xs text-white">Shift Filter</span>
+                                                    <p className="text-[10px] text-slate-300">Filter records by scheduled shift timing</p>
+                                                </div>
+                                            }
+                                        >
+                                            <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted cursor-help">
+                                                <Clock size={11} className="text-slate-400" />
+                                                <span>Shift</span>
+                                            </label>
+                                        </HoverCard>
                                         <div className="relative">
                                             <select
                                                 value={attendanceShiftId}
@@ -313,10 +479,24 @@ const AttendanceViewToolbar = ({
 
                                     {/* Employee */}
                                     <div className="space-y-1">
-                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
-                                            <User size={11} className="text-slate-400" />
-                                            <span>Employee</span>
-                                        </label>
+                                        <HoverCard
+                                            side="top"
+                                            align="start"
+                                            interactive={false}
+                                            openDelay={150}
+                                            className="w-52 p-2 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                            content={
+                                                <div className="text-left space-y-0.5">
+                                                    <span className="font-semibold text-xs text-white">Employee Filter</span>
+                                                    <p className="text-[10px] text-slate-300">Isolate matrix to a specific staff member</p>
+                                                </div>
+                                            }
+                                        >
+                                            <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted cursor-help">
+                                                <User size={11} className="text-slate-400" />
+                                                <span>Employee</span>
+                                            </label>
+                                        </HoverCard>
                                         {attendanceFilteredEmployees.length > 8 && (
                                             <div className="relative mb-1">
                                                 <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -345,6 +525,114 @@ const AttendanceViewToolbar = ({
                                             <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* Pinned Summary Columns Filter */}
+                            <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-[#30363d]">
+                                <div className="flex items-center justify-between">
+                                    <HoverCard
+                                        side="top"
+                                        align="start"
+                                        interactive={false}
+                                        openDelay={120}
+                                        className="w-72 p-3 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                        content={
+                                            <div className="space-y-1 text-left">
+                                                <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
+                                                    <Pin size={11} className="text-indigo-400" />
+                                                    <span>Total Summary Column Filter</span>
+                                                </div>
+                                                <p className="text-[11px] text-slate-300 leading-snug">
+                                                    Choose which summary metrics appear in the table. Unselected columns are completely hidden. In Default mode, Present & Absent are pinned and other selected metrics are draggable.
+                                                </p>
+                                            </div>
+                                        }
+                                    >
+                                        <label className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-700 dark:text-github-dark-text uppercase tracking-wider cursor-help">
+                                            <Pin size={11} className="text-indigo-500" />
+                                            <span>Pin Summary Columns ({pinnedSummaryKeys.length})</span>
+                                        </label>
+                                    </HoverCard>
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPinnedSummaryKeys(SUMMARY_FILTER_OPTIONS.map((c) => c.key))}
+                                            className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                                        >
+                                            Pin All
+                                        </button>
+                                        <span className="text-slate-300 dark:text-slate-600">·</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPinnedSummaryKeys(['present', 'absent'])}
+                                            className="text-slate-500 dark:text-slate-400 hover:underline font-medium cursor-pointer"
+                                        >
+                                            Default
+                                        </button>
+                                        <span className="text-slate-300 dark:text-slate-600">·</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPinnedSummaryKeys([])}
+                                            className="text-slate-500 dark:text-slate-400 hover:underline font-medium cursor-pointer"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-4 gap-1.5">
+                                    {SUMMARY_FILTER_OPTIONS.map((col) => {
+                                        const isPinned = pinnedSummaryKeys.includes(col.key);
+                                        return (
+                                            <HoverCard
+                                                key={col.key}
+                                                side="top"
+                                                align="center"
+                                                interactive={false}
+                                                openDelay={120}
+                                                className="w-52 p-2.5 rounded-xl shadow-xl bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]"
+                                                content={
+                                                    <div className="space-y-1 text-left">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-semibold text-xs text-white">{col.fullLabel}</span>
+                                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
+                                                                {col.label}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-300 leading-snug">
+                                                            {col.description}
+                                                        </p>
+                                                        <div className="pt-1 text-[9px] font-medium text-indigo-400">
+                                                            {isPinned ? '✓ Visible in matrix (Click to hide)' : '+ Hidden from matrix (Click to show)'}
+                                                        </div>
+                                                    </div>
+                                                }
+                                            >
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setPinnedSummaryKeys((prev) =>
+                                                            prev.includes(col.key)
+                                                                ? prev.filter((k) => k !== col.key)
+                                                                : [...prev, col.key]
+                                                        );
+                                                    }}
+                                                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg border text-[11px] font-medium transition-all cursor-pointer ${
+                                                        isPinned
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                                                            : 'bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-[#30363d] text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                                    }`}
+                                                >
+                                                    <span className="truncate">{col.label}</span>
+                                                    <span className={`w-3.5 h-3.5 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 ml-1 ${
+                                                        isPinned ? 'bg-indigo-600 text-white dark:bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700 text-slate-400'
+                                                    }`}>
+                                                        {isPinned ? '✓' : ''}
+                                                    </span>
+                                                </button>
+                                            </HoverCard>
+                                        );
+                                    })}
                                 </div>
                             </div>
 

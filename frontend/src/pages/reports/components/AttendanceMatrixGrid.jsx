@@ -3,15 +3,113 @@ import { User, Table } from 'lucide-react';
 import { getStatusColor, getStatusLabel, getStatusFullForm } from './reportsUtils';
 import { SummaryToggleIcon } from './SummaryToggleIcon';
 import { formatPlatformDate } from '../../../utils/dateUtils';
+import HoverCard from '../../../components/HoverCard';
 
 const TOTAL_SUMMARY_COLUMNS = [
-    { key: 'present', label: 'P', fullLabel: 'Present', width: 48, textCol: 'text-emerald-700 dark:text-emerald-400', bgCol: 'bg-emerald-50 dark:bg-[#064e3b]', getValue: (emp) => emp.stats?.present || 0 },
-    { key: 'absent', label: 'A', fullLabel: 'Absent', width: 45, textCol: 'text-rose-700 dark:text-rose-400', bgCol: 'bg-rose-50 dark:bg-[#4c0519]', getValue: (emp) => emp.stats?.absent || 0 },
-    { key: 'missedPunch', label: 'MP', fullLabel: 'Missed Punch', width: 45, textCol: 'text-amber-700 dark:text-amber-400', bgCol: 'bg-amber-50 dark:bg-[#451a03]', getValue: (emp) => emp.stats?.missedPunch || 0 },
-    { key: 'leave', label: 'L', fullLabel: 'Leave', width: 45, textCol: 'text-sky-700 dark:text-sky-400', bgCol: 'bg-sky-50 dark:bg-[#082f49]', getValue: (emp) => emp.stats?.leave || 0 },
-    { key: 'halfDay', label: 'HD', fullLabel: 'Half Day', width: 45, textCol: 'text-indigo-700 dark:text-indigo-400', bgCol: 'bg-indigo-50 dark:bg-[#1e1b4b]', getValue: (emp) => emp.stats?.halfDay || 0 },
-    { key: 'weeklyOff', label: 'WO', fullLabel: 'Weekly Off', width: 45, textCol: 'text-slate-600 dark:text-slate-400', bgCol: 'bg-slate-100 dark:bg-[#1e293b]', getValue: (emp) => emp.stats?.weeklyOff || 0 },
-    { key: 'overtime', label: 'OT (h)', fullLabel: 'Overtime (Hours)', width: 55, textCol: 'text-purple-700 dark:text-purple-400', bgCol: 'bg-purple-50 dark:bg-[#3b0764]', getValue: (emp) => emp.stats?.overtimeHrs ? (typeof emp.stats.overtimeHrs === 'number' ? emp.stats.overtimeHrs.toFixed(1) : emp.stats.overtimeHrs) : '0.0' },
+    {
+        key: 'present',
+        label: 'P',
+        fullLabel: 'Present',
+        description: 'Total days employee attended work',
+        width: 48,
+        textCol: 'text-emerald-700 dark:text-emerald-400',
+        bgCol: 'bg-emerald-50 dark:bg-[#064e3b]',
+        hoverBgCol: 'hover:bg-emerald-100 dark:hover:bg-[#065f46]',
+        borderAccent: 'border-t-emerald-500',
+        badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+        getValue: (emp) => emp.stats?.present || 0,
+    },
+    {
+        key: 'absent',
+        label: 'A',
+        fullLabel: 'Absent',
+        description: 'Total days marked absent',
+        width: 45,
+        textCol: 'text-rose-700 dark:text-rose-400',
+        bgCol: 'bg-rose-50 dark:bg-[#4c0519]',
+        hoverBgCol: 'hover:bg-rose-100 dark:hover:bg-[#5c0b20]',
+        borderAccent: 'border-t-rose-500',
+        badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+        getValue: (emp) => emp.stats?.absent || 0,
+    },
+    {
+        key: 'late',
+        label: 'LT',
+        fullLabel: 'Late',
+        description: 'Days with late arrival / punch-in',
+        width: 45,
+        textCol: 'text-orange-700 dark:text-orange-400',
+        bgCol: 'bg-orange-50 dark:bg-[#431407]',
+        hoverBgCol: 'hover:bg-orange-100 dark:hover:bg-[#5c1c0a]',
+        borderAccent: 'border-t-orange-500',
+        badge: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+        getValue: (emp) => emp.stats?.late || 0,
+    },
+    {
+        key: 'missedPunch',
+        label: 'MP',
+        fullLabel: 'Missed Punch',
+        description: 'Single punch recorded without checkout',
+        width: 45,
+        textCol: 'text-amber-700 dark:text-amber-400',
+        bgCol: 'bg-amber-50 dark:bg-[#451a03]',
+        hoverBgCol: 'hover:bg-amber-100 dark:hover:bg-[#5a2404]',
+        borderAccent: 'border-t-amber-500',
+        badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        getValue: (emp) => emp.stats?.missedPunch || 0,
+    },
+    {
+        key: 'leave',
+        label: 'L',
+        fullLabel: 'Leave',
+        description: 'Approved paid and unpaid leaves',
+        width: 45,
+        textCol: 'text-sky-700 dark:text-sky-400',
+        bgCol: 'bg-sky-50 dark:bg-[#082f49]',
+        hoverBgCol: 'hover:bg-sky-100 dark:hover:bg-[#0c4a6e]',
+        borderAccent: 'border-t-sky-500',
+        badge: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+        getValue: (emp) => emp.stats?.leave || 0,
+    },
+    {
+        key: 'halfDay',
+        label: 'HD',
+        fullLabel: 'Half Day',
+        description: 'Recorded half-day attendance shift',
+        width: 45,
+        textCol: 'text-indigo-700 dark:text-indigo-400',
+        bgCol: 'bg-indigo-50 dark:bg-[#1e1b4b]',
+        hoverBgCol: 'hover:bg-indigo-100 dark:hover:bg-[#2e266d]',
+        borderAccent: 'border-t-indigo-500',
+        badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+        getValue: (emp) => emp.stats?.halfDay || 0,
+    },
+    {
+        key: 'weeklyOff',
+        label: 'WO',
+        fullLabel: 'Weekly Off',
+        description: 'Scheduled weekly off / rest days',
+        width: 45,
+        textCol: 'text-slate-600 dark:text-slate-400',
+        bgCol: 'bg-slate-100 dark:bg-[#1e293b]',
+        hoverBgCol: 'hover:bg-slate-200 dark:hover:bg-[#334155]',
+        borderAccent: 'border-t-slate-400',
+        badge: 'bg-slate-700/50 text-slate-300 border-slate-600',
+        getValue: (emp) => emp.stats?.weeklyOff || 0,
+    },
+    {
+        key: 'overtime',
+        label: 'OT (h)',
+        fullLabel: 'Overtime (Hours)',
+        description: 'Total cumulative overtime duration in hours',
+        width: 55,
+        textCol: 'text-purple-700 dark:text-purple-400',
+        bgCol: 'bg-purple-50 dark:bg-[#3b0764]',
+        hoverBgCol: 'hover:bg-purple-100 dark:hover:bg-[#4a0a7e]',
+        borderAccent: 'border-t-purple-500',
+        badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+        getValue: (emp) => emp.stats?.overtimeHrs ? (typeof emp.stats.overtimeHrs === 'number' ? emp.stats.overtimeHrs.toFixed(1) : emp.stats.overtimeHrs) : '0.0',
+    },
 ];
 
 const AttendanceMatrixGrid = ({
@@ -21,50 +119,81 @@ const AttendanceMatrixGrid = ({
     onCellLeave,
     onRecordClick,
     isAllTotalsSticky = false,
-    onToggleAllTotalsSticky
+    pinnedSummaryKeys = ['present', 'absent'],
+    onToggleAllTotalsSticky = () => {}
 }) => {
     const tableContainerRef = useRef(null);
     const [isScrolledToEnd, setIsScrolledToEnd] = useState(false);
 
-    // Track horizontal scroll position:
-    // When distance from right edge is <= 236px, the user has dragged into the summary block.
-    // P & A seamlessly drag at the end after the calendar before the other summary columns!
+    // Filtered summary columns: ONLY show columns selected in the filter!
+    // Unselected columns are completely hidden (neither pinned nor draggable).
+    const visibleCols = useMemo(() => {
+        const filterSet = new Set(pinnedSummaryKeys);
+        return TOTAL_SUMMARY_COLUMNS.filter(c => filterSet.has(c.key));
+    }, [pinnedSummaryKeys]);
+
+    // Draggable columns in DEFAULT mode are filtered columns other than Present & Absent
+    const draggableCols = useMemo(() => {
+        return visibleCols.filter(c => c.key !== 'present' && c.key !== 'absent');
+    }, [visibleCols]);
+
+    const draggableWidth = useMemo(() => {
+        return draggableCols.reduce((sum, c) => sum + c.width, 0);
+    }, [draggableCols]);
+
+    // Horizontal scroll listener for DEFAULT mode when draggable filtered columns exist:
+    // P & A seamlessly drag at the end before the draggable summary columns
     const handleScroll = (e) => {
+        if (isAllTotalsSticky || draggableWidth === 0) {
+            if (isScrolledToEnd) setIsScrolledToEnd(false);
+            return;
+        }
         const { scrollLeft, scrollWidth, clientWidth } = e.target;
         const distFromRight = scrollWidth - (scrollLeft + clientWidth);
-        const nearEnd = distFromRight <= 236;
+        const nearEnd = distFromRight <= draggableWidth + 2;
         if (nearEnd !== isScrolledToEnd) {
             setIsScrolledToEnd(nearEnd);
         }
     };
 
     const summaryColumns = useMemo(() => {
-        const isAllSticky = isAllTotalsSticky;
+        // In PINNED mode: all visible/filtered columns are pinned stationary on right.
+        // In DEFAULT mode: only Present and Absent are pinned on right (unless scrolled to end when draggable columns exist).
+        // Other filtered columns are draggable (not sticky).
         const isPaSticky = !isAllTotalsSticky && !isScrolledToEnd;
 
-        return TOTAL_SUMMARY_COLUMNS.map((col, index) => {
+        const firstStickyIdx = visibleCols.findIndex(col => {
+            if (isAllTotalsSticky) return true;
+            if (isPaSticky && (col.key === 'present' || col.key === 'absent')) return true;
+            return false;
+        });
+
+        return visibleCols.map((col, index) => {
             const isFirst = index === 0;
-            const isLast = index === TOTAL_SUMMARY_COLUMNS.length - 1;
+            const isLast = index === visibleCols.length - 1;
 
             let isSticky = false;
             let right = 0;
-            let isStickyFirst = false;
 
-            if (isAllSticky) {
+            if (isAllTotalsSticky) {
                 isSticky = true;
-                right = TOTAL_SUMMARY_COLUMNS.slice(index + 1).reduce((acc, c) => acc + c.width, 0);
-                isStickyFirst = index === 0; // P
+                // Sum widths of visible columns after this one
+                right = visibleCols
+                    .slice(index + 1)
+                    .reduce((sum, c) => sum + c.width, 0);
             } else if (isPaSticky) {
                 if (col.key === 'present') {
                     isSticky = true;
-                    right = 45; // A's width is 45
-                    isStickyFirst = true; // P is first sticky
+                    // If absent is also visible, P is to the left of A (offset by A's width)
+                    const absentCol = visibleCols.find(c => c.key === 'absent');
+                    right = absentCol ? absentCol.width : 0;
                 } else if (col.key === 'absent') {
                     isSticky = true;
                     right = 0;
-                    isStickyFirst = false;
                 }
             }
+
+            const isStickyFirst = isSticky && index === firstStickyIdx;
 
             return {
                 ...col,
@@ -75,7 +204,7 @@ const AttendanceMatrixGrid = ({
                 isStickyFirst
             };
         });
-    }, [isAllTotalsSticky, isScrolledToEnd]);
+    }, [visibleCols, isAllTotalsSticky, isScrolledToEnd]);
 
     if (loadingPreview) {
         return (
@@ -119,8 +248,8 @@ const AttendanceMatrixGrid = ({
                                         className="p-1 rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
                                         title={
                                             isAllTotalsSticky
-                                                ? "All totals stationary: Click to make other summary columns draggable at end"
-                                                : "P & A sticky: Click to make all totals stationary on right"
+                                                ? "All totals pinned: Click to switch to default summary columns"
+                                                : "Default summary columns: Click to pin all total summary columns"
                                         }
                                     >
                                         <SummaryToggleIcon size={14} className={isAllTotalsSticky ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"} />
@@ -142,10 +271,11 @@ const AttendanceMatrixGrid = ({
                             );
                         })}
 
-                        {/* 3. Summary Header Columns: Present -> Absent -> Missed Punch -> Leave -> Half Day -> Weekly Off -> Overtime */}
+                        {/* 3. Summary Header Columns: Present -> Absent -> Late -> Missed Punch -> Leave -> Half Day -> Weekly Off -> Overtime */}
                         {/* Always after calendar, with P & A right before the other summary columns */}
                         {summaryColumns.map((col) => {
                             const isSticky = col.isSticky;
+
                             return (
                                 <th
                                     key={col.key}
@@ -155,7 +285,7 @@ const AttendanceMatrixGrid = ({
                                         col.isFirst
                                             ? 'border-l-2 border-slate-300 dark:border-github-dark-border border-r border-slate-200 dark:border-github-dark-border'
                                             : 'border-r border-slate-200 dark:border-github-dark-border'
-                                    } ${col.bgCol} select-none cursor-help`}
+                                    } ${col.bgCol} ${col.hoverBgCol} transition-colors select-none`}
                                     style={{
                                         width: col.width,
                                         minWidth: col.width,
@@ -163,36 +293,41 @@ const AttendanceMatrixGrid = ({
                                         ...(isSticky ? { right: col.right } : {}),
                                         ...(isSticky && col.isStickyFirst ? { boxShadow: '-4px 0 8px rgba(0,0,0,0.12)' } : {})
                                     }}
-                                    title={`${col.fullLabel} (${col.label}) - Total Summary`}
                                 >
-                                    <div className="flex flex-col items-center justify-center">
-                                        <span className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider text-center">
-                                            Total
-                                        </span>
-                                        <div
-                                            className={`text-xs font-semibold ${col.textCol} leading-tight mt-0.5 text-center`}
-                                            title={`${col.fullLabel} (${col.label})`}
-                                        >
-                                            {col.label}
+                                    <HoverCard
+                                        side="bottom"
+                                        align="center"
+                                        openDelay={100}
+                                        closeDelay={150}
+                                        containerClassName="w-full h-full flex flex-col items-center justify-center cursor-help"
+                                        className={`w-52 p-3 rounded-xl shadow-2xl border-t-2 ${col.borderAccent} bg-slate-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white border border-slate-800 dark:border-[#30363d]`}
+                                        content={
+                                            <div className="space-y-1.5 text-left">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-semibold text-xs text-slate-100">
+                                                        {col.fullLabel}
+                                                    </span>
+                                                    <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${col.badge}`}>
+                                                        {col.label}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-slate-400 leading-snug">
+                                                    {col.description}
+                                                </p>
+                                            </div>
+                                        }
+                                    >
+                                        <div className="flex flex-col items-center justify-center py-0.5 pointer-events-none">
+                                            <span className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider text-center">
+                                                Total
+                                            </span>
+                                            <div
+                                                className={`text-xs font-semibold ${col.textCol} leading-tight mt-0.5 text-center`}
+                                            >
+                                                {col.label}
+                                            </div>
                                         </div>
-                                    </div>
-                                    {col.isFirst && onToggleAllTotalsSticky && (
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onToggleAllTotalsSticky();
-                                            }}
-                                            className="absolute top-1 right-0.5 p-0.5 rounded hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-                                            title={
-                                                isAllTotalsSticky
-                                                    ? "All totals stationary: Click to make other summary columns draggable at end"
-                                                    : "P & A sticky: Click to make all totals stationary on right"
-                                            }
-                                        >
-                                            <SummaryToggleIcon size={11} className={isAllTotalsSticky ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"} />
-                                        </button>
-                                    )}
+                                    </HoverCard>
                                 </th>
                             );
                         })}
@@ -274,7 +409,6 @@ const AttendanceMatrixGrid = ({
                                                 ...(isSticky ? { right: col.right } : {}),
                                                 ...(isSticky && col.isStickyFirst ? { boxShadow: '-4px 0 8px rgba(0,0,0,0.10)' } : {})
                                             }}
-                                            title={`${emp.user_name}: ${col.getValue(emp)} ${col.fullLabel}`}
                                         >
                                             {col.getValue(emp)}
                                         </td>
