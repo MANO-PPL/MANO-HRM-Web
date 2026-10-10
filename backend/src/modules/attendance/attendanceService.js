@@ -48,12 +48,16 @@ function pairPunchesForDate(punches, dateStr) {
       const inPunch = p;
       let outPunch = null;
 
-      if (i + 1 < punches.length && punches[i + 1].punch_type === 'out') {
-        outPunch = punches[i + 1];
-        i += 2;
-      } else {
-        i += 1;
+      let j = i + 1;
+      while (j < punches.length && punches[j].punch_type !== 'in') {
+        if (punches[j].punch_type === 'out') {
+          outPunch = punches[j];
+          j += 1;
+          break;
+        }
+        j += 1;
       }
+      i = j;
 
       const duration = outPunch
         ? parseFloat(((new Date(outPunch.punch_time) - new Date(inPunch.punch_time)) / (1000 * 60 * 60)).toFixed(2))
@@ -1268,6 +1272,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
     )
     .where("u.org_id", org_id)
     .whereNull("p.deleted_at")
+    .whereIn("p.punch_type", ["in", "out"])
     .whereRaw("DATE(p.punch_time) >= ?", [startDate])
     .whereRaw("DATE(p.punch_time) <= ?", [endDate]);
 
@@ -1280,7 +1285,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
     query = query.where("u.shift_id", shift_id);
   }
 
-  const punchRows = await query.orderBy("p.punch_time", "asc");
+  const punchRows = await query.orderBy("p.punch_time", "asc").orderBy("p.id", "asc");
   const records = [];
 
   if (punchRows && punchRows.length > 0) {
@@ -1296,12 +1301,16 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
         const inPunch = userPunches[i];
         if (inPunch.punch_type === 'in') {
           let outPunch = null;
-          if (i + 1 < userPunches.length && userPunches[i + 1].punch_type === 'out') {
-            outPunch = userPunches[i + 1];
-            i += 2;
-          } else {
-            i += 1;
+          let j = i + 1;
+          while (j < userPunches.length && userPunches[j].punch_type !== 'in') {
+            if (userPunches[j].punch_type === 'out') {
+              outPunch = userPunches[j];
+              j += 1;
+              break;
+            }
+            j += 1;
           }
+          i = j;
 
           if (inPunch.record_date < startDate || inPunch.record_date > endDate) {
             continue;
