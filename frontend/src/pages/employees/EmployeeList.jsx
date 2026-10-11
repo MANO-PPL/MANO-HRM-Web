@@ -20,7 +20,8 @@ import {
     User,
     Settings,
     Check,
-    DollarSign
+    DollarSign,
+    Maximize2
 } from 'lucide-react';
 import { adminService, adminCacheData } from '../../services/adminService';
 import { toast } from 'react-toastify';
@@ -28,6 +29,7 @@ import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmployeeFormContent from '../../components/employees/EmployeeFormContent';
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
+import ProfilePictureModal from '../../components/modals/ProfilePictureModal';
 import MinimalSelect from '../../components/MinimalSelect';
 import payrollService from '../../services/payrollService';
 
@@ -42,6 +44,7 @@ const EmployeeList = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('Active');
     const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const [profilePictureData, setProfilePictureData] = useState(null);
     const [sidebarMode, setSidebarMode] = useState('view'); // 'view' | 'edit'
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -518,9 +521,36 @@ const EmployeeList = () => {
                                             >
                                                 <td className="px-6 py-5">
                                                     <div className="flex items-center gap-4">
-                                                        <div className="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800/50 transition-colors overflow-hidden border-2 border-white dark:border-github-dark-border shadow-sm">
+                                                        <div
+                                                            onClick={(e) => {
+                                                                if (employee.profile_image_url) {
+                                                                    e.stopPropagation();
+                                                                    setProfilePictureData({
+                                                                        imageUrl: `${employee.profile_image_url}?t=${avatarTimestamp}`,
+                                                                        name: employee.name,
+                                                                        role: employee.role,
+                                                                        department: employee.department,
+                                                                        userCode: employee.user_code || `EMP-${employee.id}`,
+                                                                        email: employee.email,
+                                                                        phone: employee.phone,
+                                                                        status: employee.status
+                                                                    });
+                                                                }
+                                                            }}
+                                                            title={employee.profile_image_url ? `View ${employee.name}'s profile photo` : employee.name}
+                                                            className={`relative group/avatar w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base transition-all shrink-0 overflow-hidden border-2 border-white dark:border-github-dark-border shadow-sm ${
+                                                                employee.profile_image_url
+                                                                    ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50'
+                                                                    : 'group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800/50'
+                                                            }`}
+                                                        >
                                                             {employee.profile_image_url ? (
-                                                                <img src={`${employee.profile_image_url}?t=${avatarTimestamp}`} alt={employee.name} className="w-full h-full object-cover" />
+                                                                <>
+                                                                    <img src={`${employee.profile_image_url}?t=${avatarTimestamp}`} alt={employee.name} className="w-full h-full object-cover" />
+                                                                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                                                        <Maximize2 size={16} />
+                                                                    </div>
+                                                                </>
                                                             ) : (
                                                                 employee.name.charAt(0)
                                                             )}
@@ -684,11 +714,37 @@ const EmployeeList = () => {
                                     <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-8">
                                         {/* Profile Card */}
                                         <div className="flex flex-col items-center gap-4 text-center">
-                                            <div className="relative">
+                                            <div className="relative group/drawer-avatar">
                                                 <div className="absolute inset-0 bg-indigo-500 blur-2xl opacity-10 rounded-full"></div>
-                                                <div className="relative w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-3xl overflow-hidden border-4 border-white dark:border-github-dark-border shadow-lg">
+                                                <div
+                                                    onClick={() => {
+                                                        if (selectedEmployee.profile_image_url) {
+                                                            setProfilePictureData({
+                                                                imageUrl: `${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`,
+                                                                name: selectedEmployee.name,
+                                                                role: selectedEmployee.role,
+                                                                department: selectedEmployee.department,
+                                                                userCode: selectedEmployee.user_code || `EMP-${selectedEmployee.id}`,
+                                                                email: selectedEmployee.email,
+                                                                phone: selectedEmployee.phone,
+                                                                status: selectedEmployee.status
+                                                            });
+                                                        }
+                                                    }}
+                                                    title={selectedEmployee.profile_image_url ? `Click to view ${selectedEmployee.name}'s profile photo` : selectedEmployee.name}
+                                                    className={`relative w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-3xl overflow-hidden border-4 border-white dark:border-github-dark-border shadow-lg transition-all ${
+                                                        selectedEmployee.profile_image_url
+                                                            ? 'cursor-pointer hover:scale-105 hover:ring-4 hover:ring-indigo-500/30'
+                                                            : ''
+                                                    }`}
+                                                >
                                                     {selectedEmployee.profile_image_url ? (
-                                                        <img src={`${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`} alt={selectedEmployee.name} className="w-full h-full object-cover" />
+                                                        <>
+                                                            <img src={`${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`} alt={selectedEmployee.name} className="w-full h-full object-cover" />
+                                                            <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/drawer-avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                                                <Maximize2 size={24} />
+                                                            </div>
+                                                        </>
                                                     ) : (
                                                         selectedEmployee.name.charAt(0)
                                                     )}
@@ -1110,6 +1166,13 @@ const EmployeeList = () => {
                     />
                 )}
             </AnimatePresence>
+
+            {/* Profile Picture Viewer Modal */}
+            <ProfilePictureModal
+                isOpen={!!profilePictureData}
+                onClose={() => setProfilePictureData(null)}
+                {...profilePictureData}
+            />
         </DashboardLayout>
     );
 };

@@ -1,5 +1,6 @@
-import React from 'react';
-import { Users, Search, Check, Plus } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, Search, Check, Plus, Eye } from 'lucide-react';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const PackageStaffAssignment = ({
     selectedPackage,
@@ -13,14 +14,29 @@ const PackageStaffAssignment = ({
     onAssignClick,
     onUnassignClick
 }) => {
+    const [previewAvatarData, setPreviewAvatarData] = useState(null);
+
+    const openAvatarPreview = (emp) => {
+        if (!emp) return;
+        setPreviewAvatarData({
+            imageUrl: emp.profile_image_url ? `${emp.profile_image_url}?t=${avatarTimestamp}` : null,
+            name: emp.user_name || 'Staff Member',
+            role: emp.designation || 'Staff',
+            department: emp.dept_name,
+            email: emp.email,
+            phone: emp.phone_no
+        });
+    };
     return (
-        <div className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
+        <div className="w-[360px] 2xl:w-[380px] shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
-                <div className="flex items-center gap-2">
-                    <Users size={16} className="text-slate-500" />
-                    <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Staff Assignments</h3>
+                <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
+                        <Users size={16} className="text-indigo-500" />
+                        <span>Assigned Staff</span>
+                    </h3>
                     {selectedPackage && (
-                        <span className="ml-auto text-xs font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                        <span className="text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
                             {employees.filter(e => e.package_group_id === selectedPackage.package_group_id).length} Assigned
                         </span>
                     )}
@@ -30,7 +46,7 @@ const PackageStaffAssignment = ({
                     <input
                         type="text"
                         placeholder="Search staff..."
-                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text"
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text placeholder:text-slate-400"
                         value={employeeSearch}
                         onChange={e => setEmployeeSearch(e.target.value)}
                     />
@@ -47,9 +63,20 @@ const PackageStaffAssignment = ({
                     return (
                         <div key={emp.user_id} className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors group">
                             <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-medium text-indigo-700 dark:text-indigo-400 overflow-hidden flex-shrink-0">
+                                <div
+                                    onClick={() => emp.profile_image_url && openAvatarPreview(emp)}
+                                    className={`relative w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-medium text-indigo-700 dark:text-indigo-400 overflow-hidden flex-shrink-0 transition-transform ${
+                                        emp.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50 group/av' : ''
+                                    }`}
+                                    title={emp.profile_image_url ? `View ${emp.user_name}'s profile photo` : emp.user_name}
+                                >
                                     {emp.profile_image_url ? (
-                                        <img src={`${emp.profile_image_url}?t=${avatarTimestamp}`} alt={emp.user_name} className="w-full h-full object-cover" />
+                                        <>
+                                            <img src={`${emp.profile_image_url}?t=${avatarTimestamp}`} alt={emp.user_name} className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/av:opacity-100 flex items-center justify-center transition-opacity">
+                                                <Eye size={12} className="text-white drop-shadow" />
+                                            </div>
+                                        </>
                                     ) : emp.user_name?.charAt(0)}
                                 </div>
                                 <div className="min-w-0">
@@ -98,6 +125,17 @@ const PackageStaffAssignment = ({
                     );
                 })}
             </div>
+
+            <ProfilePictureModal
+                isOpen={!!previewAvatarData}
+                onClose={() => setPreviewAvatarData(null)}
+                imageUrl={previewAvatarData?.imageUrl}
+                name={previewAvatarData?.name}
+                role={previewAvatarData?.role}
+                department={previewAvatarData?.department}
+                email={previewAvatarData?.email}
+                phone={previewAvatarData?.phone}
+            />
         </div>
     );
 };

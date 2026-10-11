@@ -36,7 +36,10 @@ const EmployeeConfigDrawer = ({
                         className="fixed right-0 top-0 bottom-0 w-full sm:w-[440px] bg-white dark:bg-dark-card border-l border-slate-200 dark:border-github-dark-border shadow-2xl z-50 flex flex-col"
                     >
                         {/* Header */}
-                        <div className="p-6 border-b border-slate-100 dark:border-github-dark-border/80 flex items-center justify-between shrink-0">
+                        <div 
+                            className="p-6 border-b border-slate-100 dark:border-github-dark-border/80 flex items-center justify-between shrink-0"
+                            style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}
+                        >
                             <div>
                                 <h3 className="font-extrabold text-slate-800 dark:text-github-dark-text text-base flex items-center gap-2">
                                     <SlidersHorizontal className="text-indigo-500" size={17} />
@@ -197,7 +200,10 @@ const EmployeeConfigDrawer = ({
                         </div>
 
                         {/* Footer */}
-                        <div className="p-6 border-t border-slate-100 dark:border-github-dark-border/80 flex gap-3 shrink-0">
+                        <div 
+                            className="p-6 border-t border-slate-100 dark:border-github-dark-border/80 flex gap-3 shrink-0"
+                            style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+                        >
                             <button
                                 onClick={() => setConfigEmp(null)}
                                 className="flex-1 py-2.5 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold uppercase transition-all"

@@ -110,7 +110,7 @@ const CompensationTab = ({ employeeId }) => {
                                 <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">/ month</span>
                             </div>
                             {activeSalary.package_name && (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-150 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-200/25">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-200/25">
                                     Package: {activeSalary.package_name}
                                 </span>
                             )}
