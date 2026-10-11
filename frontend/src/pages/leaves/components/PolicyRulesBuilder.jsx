@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ChevronRight, Edit2, Trash2, Layers, Plus, BookOpen } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Edit2, Trash2, Layers, Plus, BookOpen, CalendarCheck } from 'lucide-react';
 
 const PolicyRulesBuilder = ({
     selectedPolicy,
@@ -24,19 +24,19 @@ const PolicyRulesBuilder = ({
     return (
         <>
             {/* Header details block */}
-            <div className="p-4 border-b border-[#e1e4e6] dark:border-github-dark-border flex flex-col justify-start gap-3 bg-slate-50/30 dark:bg-github-dark-subtle/10">
+            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 flex flex-col justify-start gap-3">
                 {/* Mobile action bar */}
                 <div className="flex justify-between items-center lg:hidden">
                     <button
                         onClick={() => setActiveMobileTab('list')}
-                        className="flex items-center gap-1 text-xs font-medium text-indigo-650 cursor-pointer"
+                        className="flex items-center gap-1 text-xs font-medium text-indigo-600 cursor-pointer"
                     >
                         <ArrowLeft size={14} />
                         Policies
                     </button>
                     <button
                         onClick={() => setActiveMobileTab('staff')}
-                        className="flex items-center gap-1 text-xs font-medium text-indigo-650 cursor-pointer"
+                        className="flex items-center gap-1 text-xs font-medium text-indigo-600 cursor-pointer"
                     >
                         Manage Staff
                         <ChevronRight size={14} />
@@ -44,29 +44,37 @@ const PolicyRulesBuilder = ({
                 </div>
 
                 <div className="flex justify-between items-center w-full">
-                    <div>
-                        <h2 className="text-sm font-semibold text-slate-900 dark:text-github-dark-text flex items-center gap-2">
-                            {selectedPolicy.name}
-                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${selectedPolicy.is_active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-500'}`}>
-                                {selectedPolicy.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                        </h2>
-                        <p className="text-[11px] text-slate-450 dark:text-github-dark-muted mt-1 leading-normal max-w-xl font-normal">{selectedPolicy.description || 'No description provided.'}</p>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+                            <CalendarCheck size={20} />
+                        </div>
+                        <div>
+                            <h2 className="font-semibold text-base text-slate-900 dark:text-github-dark-text flex items-center gap-2">
+                                {selectedPolicy.name}
+                            </h2>
+                            <p className="text-xs text-slate-500 font-normal">
+                                {selectedPolicy.description || 'No description provided.'}
+                            </p>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-xs font-medium px-2.5 py-1 rounded-xl border border-slate-200 dark:border-[#30363d] ${selectedPolicy.is_active ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400' : 'bg-slate-50 dark:bg-[#161b22]/30 text-slate-500 dark:text-slate-400'}`}>
+                            {selectedPolicy.is_active ? 'Active' : 'Inactive'}
+                        </span>
                         <button
                             onClick={(e) => openEditPolicy(selectedPolicy, e)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-655 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
-                            title="Edit Policy"
+                            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle hover:bg-slate-50 dark:hover:bg-github-dark-subtle/80 rounded-lg text-xs font-medium transition-all shadow-xs cursor-pointer"
+                            title="Edit policy"
                         >
                             <Edit2 size={13} />
+                            <span>Edit</span>
                         </button>
                         <button
                             onClick={(e) => { e.stopPropagation(); setConfirmDeletePolicy({ isOpen: true, policy: selectedPolicy }); }}
-                            className="p-1.5 text-slate-400 hover:text-red-655 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
-                            title="Delete Policy"
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/10 rounded-lg border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+                            title="Delete policy"
                         >
-                            <Trash2 size={13} />
+                            <Trash2 size={15} />
                         </button>
                     </div>
                 </div>

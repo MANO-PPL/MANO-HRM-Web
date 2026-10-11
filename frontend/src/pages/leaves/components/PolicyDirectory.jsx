@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Loader2, Clock } from 'lucide-react';
+import { Plus, Search, Loader2, Clock, CalendarCheck } from 'lucide-react';
 
 const PolicyDirectory = ({
     policies = [],
@@ -17,17 +17,25 @@ const PolicyDirectory = ({
     );
 
     return (
-        <div className="w-[280px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
-            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
+        <div className="w-[360px] 2xl:w-[380px] h-full bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
+            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
                 <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text">Leave Policies</h3>
-                    <button
-                        onClick={openAddPolicy}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-all cursor-pointer active:scale-95 shadow-sm"
-                    >
-                        <Plus size={14} />
-                        Create
-                    </button>
+                    <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
+                        <CalendarCheck size={16} className="text-indigo-500" />
+                        <span>Leave Policies</span>
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                            {policies.length}
+                        </span>
+                    </h3>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            onClick={openAddPolicy}
+                            className="p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer"
+                            title="Create new policy"
+                        >
+                            <Plus size={16} />
+                        </button>
+                    </div>
                 </div>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -36,7 +44,7 @@ const PolicyDirectory = ({
                         placeholder="Search policies..."
                         value={policySearch}
                         onChange={(e) => setPolicySearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg outline-none transition-all focus:ring-2 focus:ring-indigo-500/20 text-slate-755 dark:text-github-dark-text font-normal"
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text placeholder:text-slate-400"
                     />
                 </div>
             </div>

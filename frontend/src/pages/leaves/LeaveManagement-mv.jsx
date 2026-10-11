@@ -27,8 +27,8 @@ const MobileLeaveManagement = () => {
     }, [location.search]);
 
     return (
-        <MobileDashboardLayout title="Leave Management">
-            <div className="px-2 pt-2 space-y-3">
+        <MobileDashboardLayout title="Leave Management" contentClassName="px-0 pt-0 pb-4">
+            <div className="w-full px-2.5 sm:px-3 pt-2.5 pb-6 space-y-3">
                 {/* Mobile Tabs Strip */}
                 <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-github-dark-subtle rounded-xl border border-slate-200/60 dark:border-github-dark-border">
                     <button
@@ -57,7 +57,7 @@ const MobileLeaveManagement = () => {
 
                 {/* Content Panel */}
                 <div className="relative">
-                    {activeTab === 'requests' && <MobileLeaveApplication />}
+                    {activeTab === 'requests' && <MobileLeaveApplication isEmbedded={true} />}
                     {activeTab === 'policies' && <LeavePolicies />}
                 </div>
             </div>

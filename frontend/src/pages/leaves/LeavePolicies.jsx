@@ -36,7 +36,7 @@ import PolicyFormDrawer from './components/PolicyFormDrawer';
 import PolicyRuleFormDrawer from './components/PolicyRuleFormDrawer';
 import AdjustBalanceDrawer from './components/AdjustBalanceDrawer';
 
-const LeavePolicies = () => {
+const LeavePolicies = ({ embedded = false }) => {
     // Core state
     const [policies, setPolicies] = useState([]);
     const [selectedPolicyId, setSelectedPolicyId] = useState(null);
@@ -478,7 +478,7 @@ const LeavePolicies = () => {
     const { assigned: assignedStaff, available: availableStaff } = getStaffClassification();
 
     return (
-        <div className="flex flex-row gap-4 h-full w-full min-w-[1000px] overflow-hidden">
+        <div className={`flex ${embedded ? 'h-full p-0' : 'h-[calc(100vh-64px)] p-3'} gap-3 animate-in fade-in duration-300 w-full overflow-hidden`}>
             {/* COLUMN 1: Policies Directory List */}
             <PolicyDirectory
                 policies={policies}
