@@ -18,26 +18,24 @@ const PackageDetailsPanel = ({
     return (
         <div className="flex flex-col h-full overflow-hidden">
             {/* Package Details Header */}
-            <div className="p-6 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 flex justify-between items-center">
-                <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-github-dark-text flex items-center gap-2">
-                        {selectedPackage.package_name}
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                        Created on {selectedPackage.created_at ? formatPlatformDate(selectedPackage.created_at) : 'N/A'}
-                    </p>
+            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+                        <Layers size={20} />
+                    </div>
+                    <div>
+                        <h2 className="font-semibold text-base text-slate-900 dark:text-github-dark-text flex items-center gap-2">
+                            {selectedPackage.package_name}
+                        </h2>
+                        <p className="text-xs text-slate-500 font-normal">
+                            Created on {selectedPackage.created_at ? formatPlatformDate(selectedPackage.created_at) : 'N/A'}
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => onEditPackage(selectedPackage)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle hover:bg-slate-50 dark:hover:bg-github-dark-subtle/80 rounded-xl text-xs font-medium transition-all shadow-sm cursor-pointer"
-                        title="Edit package details"
-                    >
-                        <Edit2 size={13} />
-                        <span>Edit</span>
-                    </button>
+                    {/* Inline Status Toggle */}
                     <div className="flex items-center gap-2 border border-slate-200 dark:border-[#30363d] px-3 py-1 rounded-xl bg-slate-50/50 dark:bg-[#161b22]/30 select-none">
-                        <span className={`text-xs font-medium transition-colors duration-150 ${selectedPackage.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <span className={`text-xs font-medium transition-colors ${selectedPackage.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
                             {selectedPackage.is_active ? 'Active' : 'Inactive'}
                         </span>
                         <button
@@ -51,11 +49,19 @@ const PackageDetailsPanel = ({
                         </button>
                     </div>
                     <button
+                        onClick={() => onEditPackage(selectedPackage)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle hover:bg-slate-50 dark:hover:bg-github-dark-subtle/80 rounded-lg text-xs font-medium transition-all shadow-xs cursor-pointer"
+                        title="Edit package details"
+                    >
+                        <Edit2 size={13} />
+                        <span>Edit</span>
+                    </button>
+                    <button
                         onClick={() => onDeletePackage(selectedPackage)}
-                        className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg border border-transparent hover:border-red-200 transition-all cursor-pointer"
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/10 rounded-lg border border-transparent hover:border-rose-200 transition-all cursor-pointer"
                         title="Delete package"
                     >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                     </button>
                 </div>
             </div>

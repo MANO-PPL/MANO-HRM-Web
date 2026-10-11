@@ -1,5 +1,7 @@
-import React from 'react';
-import { ArrowLeft, Users, Search, Loader2, UserMinus, UserPlus } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, Users, Search, Loader2, UserMinus, UserPlus, Eye } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const PolicyStaffAssignment = ({
     selectedPolicy,
@@ -16,9 +18,23 @@ const PolicyStaffAssignment = ({
     activeMobileTab,
     setActiveMobileTab
 }) => {
+    const { avatarTimestamp } = useAuth();
+    const [previewAvatarData, setPreviewAvatarData] = useState(null);
+
+    const openAvatarPreview = (user) => {
+        if (!user) return;
+        setPreviewAvatarData({
+            imageUrl: user.profile_image_url ? `${user.profile_image_url}?t=${avatarTimestamp}` : null,
+            name: user.user_name || 'Staff Member',
+            role: user.designation || 'Staff',
+            department: user.dept_name,
+            email: user.email,
+            phone: user.phone_no
+        });
+    };
     if (!selectedPolicy) {
         return (
-            <div className="w-[320px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
+            <div className="w-[360px] 2xl:w-[380px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400 text-center">
                     <Users size={48} className="opacity-20 mb-3" />
                     <h4 className="font-bold text-xs">No Policy Selected</h4>
@@ -29,27 +45,23 @@ const PolicyStaffAssignment = ({
     }
 
     return (
-        <div className="w-[320px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
+        <div className="w-[360px] 2xl:w-[380px] h-full bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
             {/* Header assigned list */}
-            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
+            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
                 <div className="flex justify-between items-center">
-                    <button
-                        onClick={() => setActiveMobileTab('details')}
-                        className="lg:hidden flex items-center gap-1 text-xs font-medium text-indigo-650 cursor-pointer"
-                    >
-                        <ArrowLeft size={14} />
-                        Back Details
-                    </button>
-                    <h3 className="text-xs font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-1.5">
-                        <Users size={12} />
-                        Assigned Staff ({assignedStaff.length})
-                    </h3>
+                    <div className="flex items-center gap-2">
+                        <Users size={16} className="text-indigo-500" />
+                        <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Assigned Staff</h3>
+                        <span className="text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                            {assignedStaff.length} Assigned
+                        </span>
+                    </div>
 
                     {/* Target Year selection */}
                     <select
                         value={selectedYear}
                         onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        className="px-2 py-1.5 bg-slate-50 dark:bg-github-dark-subtle border border-[#30363d] rounded-lg text-[10px] font-normal text-slate-600 dark:text-slate-350 outline-none cursor-pointer"
+                        className="px-2.5 py-1 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-[#30363d] rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
                     >
                         {Array.from({ length: 5 }, (_, i) => {
                             const y = new Date().getFullYear() - 2 + i;
@@ -59,13 +71,13 @@ const PolicyStaffAssignment = ({
                 </div>
 
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                     <input
                         type="text"
-                        placeholder="Search staff, design..."
+                        placeholder="Search staff, designation..."
                         value={balanceSearch}
                         onChange={(e) => setBalanceSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg outline-none transition-all focus:ring-2 focus:ring-indigo-500/20 text-slate-705 dark:text-github-dark-text font-normal"
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text"
                     />
                 </div>
             </div>
@@ -89,9 +101,20 @@ const PolicyStaffAssignment = ({
                                     className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl p-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 group transition-all"
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                        <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-xs text-slate-650 overflow-hidden shrink-0">
+                                        <div
+                                            onClick={() => openAvatarPreview(user)}
+                                            className={`relative w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-xs text-slate-650 overflow-hidden shrink-0 transition-transform ${
+                                                user.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50 group/av' : ''
+                                            }`}
+                                            title={user.profile_image_url ? `View ${user.user_name}'s profile photo` : user.user_name}
+                                        >
                                             {user.profile_image_url && user.profile_image_url.startsWith('http') ? (
-                                                <img src={user.profile_image_url} alt={user.user_name} className="w-full h-full object-cover" />
+                                                <>
+                                                    <img src={`${user.profile_image_url}?t=${avatarTimestamp}`} alt={user.user_name} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/av:opacity-100 flex items-center justify-center transition-opacity">
+                                                        <Eye size={12} className="text-white drop-shadow" />
+                                                    </div>
+                                                </>
                                             ) : (
                                                 (user.user_name || 'U').charAt(0).toUpperCase()
                                             )}
@@ -152,9 +175,20 @@ const PolicyStaffAssignment = ({
                                     className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl p-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                        <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-xs text-slate-650 overflow-hidden shrink-0">
+                                        <div
+                                            onClick={() => openAvatarPreview(user)}
+                                            className={`relative w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-xs text-slate-650 overflow-hidden shrink-0 transition-transform ${
+                                                user.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50 group/av' : ''
+                                            }`}
+                                            title={user.profile_image_url ? `View ${user.user_name}'s profile photo` : user.user_name}
+                                        >
                                             {user.profile_image_url && user.profile_image_url.startsWith('http') ? (
-                                                <img src={user.profile_image_url} alt={user.user_name} className="w-full h-full object-cover" />
+                                                <>
+                                                    <img src={`${user.profile_image_url}?t=${avatarTimestamp}`} alt={user.user_name} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/av:opacity-100 flex items-center justify-center transition-opacity">
+                                                        <Eye size={12} className="text-white drop-shadow" />
+                                                    </div>
+                                                </>
                                             ) : (
                                                 (user.user_name || 'U').charAt(0).toUpperCase()
                                             )}
@@ -183,6 +217,17 @@ const PolicyStaffAssignment = ({
                     )}
                 </div>
             </div>
+
+            <ProfilePictureModal
+                isOpen={!!previewAvatarData}
+                onClose={() => setPreviewAvatarData(null)}
+                imageUrl={previewAvatarData?.imageUrl}
+                name={previewAvatarData?.name}
+                role={previewAvatarData?.role}
+                department={previewAvatarData?.department}
+                email={previewAvatarData?.email}
+                phone={previewAvatarData?.phone}
+            />
         </div>
     );
 };
