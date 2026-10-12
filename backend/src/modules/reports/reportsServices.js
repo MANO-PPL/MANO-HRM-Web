@@ -166,6 +166,166 @@ export function getHolidayOverride(dateStr, holidayByDate) {
     return { status: 'Holiday', reason: holiday.holiday_name || 'Organization Holiday' };
 }
 
+export const formatMusterTime = (dateVal) => {
+    if (!dateVal) return "";
+    const d = dateVal instanceof Date ? dateVal : new Date(dateVal);
+    if (isNaN(d.getTime())) return "";
+    const h = d.getUTCHours();
+    const m = String(d.getUTCMinutes()).padStart(2, '0');
+    const h12 = h % 12 || 12;
+    return `${h12}:${m}`;
+};
+
+export async function buildMusterRollData({
+    org_id,
+    users,
+    records,
+    approvedLeaves,
+    holidayByDate,
+    startDate,
+    endDate,
+    month,
+    todayStr
+}) {
+    let companyName = "Mano Project Consultant Pvt Ltd";
+    try {
+        const org = await attendanceDB("core_organizations").where({ org_id }).select("org_name").first();
+        if (org?.org_name) companyName = org.org_name;
+    } catch {
+        // Fallback default
+    }
+
+    const dateStrings = getDateRangeArray(startDate, endDate);
+    const [y, m] = (month || startDate).split('-').map(Number);
+    const baseDate = new Date(y, (m || 1) - 1, 1);
+    const monthFull = baseDate.toLocaleDateString('en-US', { month: 'long' });
+    const monthTitle = `Staff Attendance ${monthFull} ${y}`;
+
+    const dateHeaders = dateStrings.map(dateStr => {
+        const [dy, dm, dd] = dateStr.split('-').map(Number);
+        const d = new Date(dy, dm - 1, dd);
+        const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' });
+        const monthShort = d.toLocaleDateString('en-US', { month: 'short' });
+        const yearShort = String(dy).slice(-2);
+        const dateFormatted = `${String(dd).padStart(2, '0')}-${monthShort}-${yearShort}`;
+        const isSunday = d.getDay() === 0;
+        const isHoliday = !!getHolidayOverride(dateStr, holidayByDate);
+        const holidayName = holidayByDate[dateStr]?.name || holidayByDate[dateStr]?.holiday_name || '';
+        return {
+            dateStr,
+            dayOfWeek,
+            dayNum: dd,
+            dateFormatted,
+            isSunday,
+            isHoliday,
+            holidayName,
+            isHighlight: isSunday || isHoliday
+        };
+    });
+
+    const employees = users.map((u, index) => {
+        const userRecs = records.filter(r => r.user_id === u.user_id);
+        const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
+        const rules = getShiftRules(u);
+        const userStartDate = getUserStartDate(u);
+
+        const statusRow = [];
+        const workHourRow = [];
+        const inRow = [];
+        const outRow = [];
+
+        let presentUnits = 0;
+
+        dateHeaders.forEach(dh => {
+            const dateStr = dh.dateStr;
+            const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
+            const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
+            const dayType = getDayType(dateStr, rules.week_off_policy);
+            const isSunday = dh.isSunday || dayType === 'week_off';
+            const isHoliday = dh.isHoliday;
+            const isOff = isSunday || isHoliday;
+            const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
+            const isJoined = !userStartDate || dateStr >= userStartDate;
+
+            if (aggregated.time_in) {
+                const workedHours = aggregated.worked_hours || 0;
+                workHourRow.push(workedHours > 0 ? workedHours.toFixed(1) : "0.0");
+                inRow.push(formatMusterTime(aggregated.time_in));
+                outRow.push(formatMusterTime(aggregated.time_out));
+
+                if (isOff) {
+                    statusRow.push("1.0");
+                    presentUnits += 1.0;
+                } else if (aggregated.status === 'Half Day') {
+                    statusRow.push("0.5");
+                    presentUnits += 0.5;
+                } else if (aggregated.status === 'Absent') {
+                    statusRow.push("0.0");
+                } else {
+                    statusRow.push("1.0");
+                    presentUnits += 1.0;
+                }
+            } else {
+                if (isOff) {
+                    statusRow.push("1.0");
+                    presentUnits += 1.0;
+                    workHourRow.push("");
+                    inRow.push("");
+                    outRow.push("");
+                } else if (leaveOnDate) {
+                    statusRow.push("1.0");
+                    presentUnits += 1.0;
+                    workHourRow.push("");
+                    inRow.push("");
+                    outRow.push("");
+                } else if (!isJoined) {
+                    statusRow.push("-");
+                    workHourRow.push("");
+                    inRow.push("");
+                    outRow.push("");
+                } else if (dateStr > todayStr) {
+                    statusRow.push("");
+                    workHourRow.push("");
+                    inRow.push("");
+                    outRow.push("");
+                } else {
+                    statusRow.push("0.0");
+                    workHourRow.push("0.0");
+                    inRow.push("");
+                    outRow.push("");
+                }
+            }
+        });
+
+        const presentDaysFormatted = presentUnits.toFixed(2);
+        const gradeFormatted = u.grade || `G-${String(u.desg_id || ((index % 10) + 1)).padStart(2, '0')}`;
+        const codeFormatted = u.user_code || `M-${u.user_id}`;
+
+        return {
+            srNo: index + 1,
+            userId: u.user_id,
+            name: u.user_name,
+            position: u.desg_name || "-",
+            employeeCode: codeFormatted,
+            grade: gradeFormatted,
+            daysInMonth: dateStrings.length,
+            presentDays: presentDaysFormatted,
+            statusRow,
+            workHourRow,
+            inRow,
+            outRow
+        };
+    });
+
+    return {
+        monthTitle,
+        companyName,
+        daysInMonth: dateStrings.length,
+        dateHeaders,
+        employees
+    };
+}
+
 export async function getPreviewData({ type, org_id, month, startDate, endDate, targetUserId, columns, dept_id, desg_id, shift_id }) {
     const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
     let data = { columns: [], rows: [] };
@@ -236,352 +396,76 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 return "";
             });
             data.rows.push(totalsRow);
-        } else if (type === "attendance_matrix_weekly" || type === "attendance_matrix_monthly") {
-            const dateStrings = getDateRangeArray(startDate, endDate);
-            const dateHeaders = dateStrings.map(dateStr => {
-                const [y, m, d] = dateStr.split('-').map(Number);
-                return new Date(y, m - 1, d);
+        } else if (["matrix_monthly", "attendance_matrix_monthly", "matrix_weekly", "attendance_matrix_weekly"].includes(type)) {
+            const musterRoll = await buildMusterRollData({
+                org_id,
+                users,
+                records,
+                approvedLeaves,
+                holidayByDate,
+                startDate,
+                endDate,
+                month,
+                todayStr
             });
 
-            const baseHeaders = ["Name", "Position", "Dept"];
-            if (colsObj.shift !== false) {
-                baseHeaders.push("Shift");
-            }
-            const dateLabels = dateHeaders.map(d => {
-                return `${d.getDate()} ${d.toLocaleDateString('en-US', { weekday: 'short' })}`;
+            data.musterRoll = musterRoll;
+
+            // Columns and 4-row layout
+            const baseCols = ["SR No.", "Name", "Position", "Employee Code", "Grade", "Days in Month", "Present Days"];
+            const dateLabels = musterRoll.dateHeaders.map(dh => `${dh.dayOfWeek}\n${dh.dateFormatted}`);
+            data.columns = [...baseCols, ...dateLabels];
+
+            // Structured 4 rows per employee
+            const formattedRows = [];
+            musterRoll.employees.forEach(emp => {
+                // Row 1: Status units
+                formattedRows.push([
+                    emp.srNo,
+                    emp.name,
+                    emp.position,
+                    emp.employeeCode,
+                    emp.grade,
+                    emp.daysInMonth,
+                    emp.presentDays,
+                    ...emp.statusRow
+                ]);
+                // Row 2: Work Hour
+                formattedRows.push([
+                    "",
+                    "",
+                    "Work Hour",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ...emp.workHourRow
+                ]);
+                // Row 3: In
+                formattedRows.push([
+                    "",
+                    "",
+                    "In",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ...emp.inRow
+                ]);
+                // Row 4: Out
+                formattedRows.push([
+                    "",
+                    "",
+                    "Out",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ...emp.outRow
+                ]);
             });
 
-            const summaryCols = [];
-            const summaryColIndices = [];
-            const pushSummary = (name, check, index) => {
-                if (colsObj[check] !== false) {
-                    summaryCols.push(name);
-                    summaryColIndices.push(index);
-                }
-            };
-            pushSummary("Required Hrs", "requiredHours", 0);
-            pushSummary("Worked Hrs", "workedHours", 1);
-            pushSummary("Late Hours", "late", 2);
-            pushSummary("Late Count", "late", 3);
-            pushSummary("Present Days", "attendanceDays", 4);
-            pushSummary("Absent Days", "attendanceDays", 5);
-
-            data.columns = [...baseHeaders, ...dateLabels, ...summaryCols];
-            data.rows = users.map((u) => {
-                const userRecs = records.filter(r => r.user_id === u.user_id);
-                const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-
-                const userRow = [
-                    u.user_name,
-                    u.desg_name || "-",
-                    u.dept_name || "-"
-                ];
-                if (colsObj.shift !== false) {
-                    userRow.push(u.shift_name || "-");
-                }
-
-                let totalWorkedHrs = 0;
-                let totalLateMins = 0;
-                let lateCount = 0;
-                let presentDays = 0;
-
-                const dateCells = [];
-                dateHeaders.forEach((d, dIdx) => {
-                    const dateStr = dateStrings[dIdx];
-                    const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
-                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
-                    const rules = getShiftRules(u);
-                    const dayType = getDayType(dateStr, rules.week_off_policy);
-                    const userStartDate = getUserStartDate(u);
-                    const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
-
-                    const holidayOverride = !aggregated.time_in ? getHolidayOverride(dateStr, holidayByDate) : null;
-
-                    if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
-                        if (aggregated.status === 'Missed Punch') {
-                            dateCells.push("MP");
-                        } else if (aggregated.status === 'Half Day') {
-                            dateCells.push("Half Day");
-                            presentDays++;
-                        } else {
-                            dateCells.push("1.0");
-                            presentDays++;
-                        }
-                        totalWorkedHrs += aggregated.worked_hours;
-                        if (aggregated.late_minutes > 0) {
-                            totalLateMins += aggregated.late_minutes;
-                            lateCount++;
-                        }
-                    } else if (holidayOverride) {
-                        dateCells.push("Holiday");
-                    } else if (leaveOnDate) {
-                        dateCells.push("L");
-                    } else if (userStartDate && dateStr < userStartDate) {
-                        dateCells.push("-");
-                    } else if (dateStr > todayStr) {
-                        if (dayType === 'week_off') {
-                            const day = d.getDay();
-                            dateCells.push(day === 0 ? "Sun" : day === 6 ? "Sat" : "WEEK_OFF");
-                        } else {
-                            dateCells.push("Not Recorded");
-                        }
-                    } else {
-                        if (dayType === 'week_off') {
-                            const day = d.getDay();
-                            dateCells.push(day === 0 ? "Sun" : day === 6 ? "Sat" : "WEEK_OFF");
-                        } else {
-                            dateCells.push("0.0");
-                        }
-                    }
-                });
-
-                const reqHrs = getRequiredHoursForPeriod(u, dateStrings, holidayByDate);
-                const workedHrs = totalWorkedHrs;
-                const lateHrs = totalLateMins / 60;
-
-                let calculatedAbsentDays = 0;
-                dateHeaders.forEach((d, dIdx) => {
-                    const dateStr = dateStrings[dIdx];
-                    const userStartDate = getUserStartDate(u);
-                    if (userStartDate && dateStr < userStartDate) return;
-                    const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
-                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
-                    const rules = getShiftRules(u);
-                    const dayType = getDayType(dateStr, rules.week_off_policy);
-                    const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
-                    const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' && aggregated.status !== 'Missed Punch';
-                    const isMissedPunch = aggregated.status === 'Missed Punch';
-                    const isHoliday = !aggregated.time_in && !!getHolidayOverride(dateStr, holidayByDate);
-                    if (!isPresent && !isMissedPunch && !isHoliday && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
-                        calculatedAbsentDays++;
-                    }
-                });
-
-                userRow.push(...dateCells);
-
-                const fullSummaryPart = [
-                    reqHrs.toFixed(2),
-                    workedHrs.toFixed(2),
-                    lateHrs.toFixed(2),
-                    lateCount,
-                    presentDays,
-                    calculatedAbsentDays
-                ];
-                summaryColIndices.forEach(idx => {
-                    userRow.push(fullSummaryPart[idx]);
-                });
-
-                return userRow;
-            });
-
-            // Calculate totals row if rows exist
-            if (data.rows.length > 0) {
-                const totalsRow = ["TOTALS", "", ""];
-                if (colsObj.shift !== false) totalsRow.push("");
-                dateHeaders.forEach(() => {
-                    totalsRow.push("");
-                });
-
-                summaryCols.forEach(c => {
-                    const colIdx = data.columns.indexOf(c);
-                    if (["Required Hrs", "Worked Hrs", "Late Hours"].includes(c)) {
-                        let sum = 0;
-                        data.rows.forEach(r => { sum += parseFloat(r[colIdx]) || 0; });
-                        totalsRow.push(sum.toFixed(2));
-                    } else {
-                        let sum = 0;
-                        data.rows.forEach(r => { sum += parseInt(r[colIdx]) || 0; });
-                        totalsRow.push(sum);
-                    }
-                });
-                data.rows.push(totalsRow);
-            }
-        } else {
-            // Multi-day Matrix Preview (Weekly or Monthly) - Original matrix_weekly, matrix_monthly
-            const dateStrings = getDateRangeArray(startDate, endDate);
-            const dateHeaders = dateStrings.map(dateStr => {
-                const [y, m, d] = dateStr.split('-').map(Number);
-                return new Date(y, m - 1, d);
-            });
-
-            const baseHeaders = ["Name", "Position", "Dept"];
-            if (colsObj.shift !== false) {
-                baseHeaders.push("Shift");
-            }
-            const timeHeaders = [];
-
-            let dailyColspan = 0;
-            const subCols = [];
-
-            if (colsObj.status !== false) {
-                dailyColspan++;
-                subCols.push({ label: "Status", key: "status" });
-            }
-
-            if (colsObj.timeIn !== false) {
-                dailyColspan++;
-                subCols.push({ label: "In Time", key: "timeIn" });
-            }
-            if (colsObj.timeOut !== false) {
-                dailyColspan++;
-                subCols.push({ label: "Out Time", key: "timeOut" });
-            }
-            if (colsObj.workedHours !== false) {
-                dailyColspan++;
-                subCols.push({ label: "Work Hrs", key: "workedHours" });
-            }
-            if (colsObj.requiredHours !== false) {
-                dailyColspan++;
-                subCols.push({ label: "Req Hrs", key: "requiredHours" });
-            }
-            if (colsObj.late !== false) {
-                dailyColspan++;
-                subCols.push({ label: "Late Mins", key: "late" });
-            }
-            if (colsObj.location !== false) {
-                dailyColspan += 2;
-                subCols.push({ label: "In Location", key: "location" });
-                subCols.push({ label: "Out Location", key: "location" });
-            }
-
-            // Build grouped headers for the frontend table
-            const row1 = [
-                { label: "Name", rowspan: 2, colspan: 1 },
-                { label: "Position", rowspan: 2, colspan: 1 },
-                { label: "Dept", rowspan: 2, colspan: 1 }
-            ];
-            if (colsObj.shift !== false) {
-                row1.push({ label: "Shift", rowspan: 2, colspan: 1 });
-            }
-
-            dateHeaders.forEach(d => {
-                const datePrefix = `${d.getDate()} ${d.toLocaleDateString('en-US', { weekday: 'short' })}`;
-                if (dailyColspan > 0) {
-                    row1.push({ label: datePrefix, rowspan: 1, colspan: dailyColspan });
-                }
-            });
-
-            const summaryCols = [];
-            const summaryColIndices = [];
-            const pushSummary = (name, check, index) => {
-                if (colsObj[check] !== false) {
-                    summaryCols.push(name);
-                    summaryColIndices.push(index);
-                }
-            };
-            pushSummary("Present Days", "attendanceDays", 0);
-            pushSummary("Total Hrs", "workedHours", 1);
-            pushSummary("Late Count", "late", 2);
-            pushSummary("Late Mins", "late", 3);
-
-            row1.push(
-                ...summaryCols.map(c => ({ label: c, rowspan: 2, colspan: 1 }))
-            );
-
-            const row2 = [];
-            if (dailyColspan > 0) {
-                dateHeaders.forEach(() => {
-                    subCols.forEach(sc => {
-                        row2.push({ label: sc.label });
-                    });
-                });
-            }
-
-            data.headers = [row1, row2];
-
-            const gridHeaders = [];
-            if (dailyColspan > 0) {
-                dateHeaders.forEach(d => {
-                    const datePrefix = `${d.getDate()} ${d.toLocaleDateString('en-US', { weekday: 'short' })}`;
-                    subCols.forEach(sc => {
-                        gridHeaders.push(`${datePrefix}\n${sc.label}`);
-                    });
-                });
-            }
-
-            data.columns = [...baseHeaders, ...timeHeaders, ...gridHeaders, ...summaryCols];
-            data.rows = users.map((u) => {
-                const userRecs = records.filter(r => r.user_id === u.user_id);
-                const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-
-                const userRow = [u.user_name, u.desg_name || "-", u.dept_name || "-"];
-                if (colsObj.shift !== false) {
-                    userRow.push(u.shift_name || "-");
-                }
-
-                let totalHrs = 0;
-                let lateCount = 0;
-                let lateMins = 0;
-
-                dateHeaders.forEach((d, dIdx) => {
-                    const dateStr = dateStrings[dIdx];
-                    const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
-                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
-                    const rules = getShiftRules(u);
-                    const dayType = getDayType(dateStr, rules.week_off_policy);
-                    const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
-
-                    if (aggregated.time_in) {
-                        subCols.forEach(sc => {
-                            if (sc.label === "Status") userRow.push(aggregated.status);
-                            else if (sc.label === "In Time") userRow.push(formatLocalTimeStr(aggregated.time_in));
-                            else if (sc.label === "Out Time") userRow.push(formatLocalTimeStr(aggregated.time_out));
-                            else if (sc.label === "Work Hrs") userRow.push(aggregated.worked_hours.toFixed(2));
-                            else if (sc.label === "Req Hrs") {
-                                // A declared holiday requires nothing, even on a day the employee
-                                // chose to come in anyway — matches the period total below.
-                                const req = getHolidayOverride(dateStr, holidayByDate) ? 0 : getExpectedHours(dateStr, rules.week_off_policy, rules);
-                                userRow.push(req.toFixed(2));
-                            }
-                            else if (sc.label === "Late Mins") userRow.push(aggregated.late_minutes.toString());
-                            else if (sc.label === "In Location") userRow.push(aggregated.time_in_address || "-");
-                            else if (sc.label === "Out Location") userRow.push(aggregated.time_out_address || "-");
-                        });
-
-                        totalHrs += aggregated.worked_hours;
-                        if (aggregated.late_minutes > 0) {
-                            lateCount++;
-                            lateMins += aggregated.late_minutes;
-                        }
-                    } else {
-                        const day = d.getDay();
-                        const userStartDate = getUserStartDate(u);
-                        let statusStr = "Absent";
-                        if (getHolidayOverride(dateStr, holidayByDate)) {
-                            statusStr = "Holiday";
-                        } else if (leaveOnDate) {
-                            statusStr = "On Leave";
-                        } else if (userStartDate && dateStr < userStartDate) {
-                            statusStr = "-";
-                        } else if (dateStr > todayStr) {
-                            if (dayType === 'week_off') {
-                                statusStr = day === 0 ? "Sun" : day === 6 ? "Sat" : "WEEK_OFF";
-                            } else {
-                                statusStr = "Not Recorded";
-                            }
-                        } else {
-                            if (dayType === 'week_off') {
-                                statusStr = day === 0 ? "Sun" : day === 6 ? "Sat" : "WEEK_OFF";
-                            }
-                        }
-
-                        subCols.forEach((sc) => {
-                            if (sc.label === "Status") userRow.push(statusStr);
-                            else if (sc.label === "Req Hrs") {
-                                const req = (userStartDate && dateStr < userStartDate) || getHolidayOverride(dateStr, holidayByDate) ? 0 : getExpectedHours(dateStr, rules.week_off_policy, rules);
-                                userRow.push(req.toFixed(2));
-                            }
-                            else userRow.push("-");
-                        });
-                    }
-                });
-
-                const fullSummaryPart = [userRecs.length, totalHrs.toFixed(2), lateCount, lateMins];
-                summaryColIndices.forEach(idx => {
-                    userRow.push(fullSummaryPart[idx]);
-                });
-                return userRow;
-            });
+            data.rows = formattedRows;
         }
     } else if (type === "attendance_detailed") {
         const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
@@ -814,8 +698,34 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
     } else if (type === "employee_master") {
         const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate, include_inactive: true });
 
-        data.columns = ["Name", "Email", "Phone", "Dept", "Designation", "Role", "Status"];
-        data.rows = users.map(u => [u.user_name, u.email || "-", u.phone_no || "-", u.dept_name || "-", u.desg_name || "-", u.user_type || "-", u.is_deleted ? "Deleted" : (u.is_active ? "Active" : "Inactive")]);
+        data.columns = ["Code", "Name", "Department", "Designation", "Shift", "Phone", "Email", "Joining Date", "Role", "Status"];
+        data.rows = users.map(u => [
+            u.user_code || `EMP-${u.user_id}`,
+            u.user_name,
+            u.dept_name || "-",
+            u.desg_name || "-",
+            u.shift_name || "Open Shift",
+            u.phone_no || "-",
+            u.email || "-",
+            u.joining_date ? String(u.joining_date).slice(0, 10) : (u.created_at ? String(u.created_at).slice(0, 10) : "-"),
+            u.user_type || "employee",
+            u.is_deleted ? "Deleted" : (u.is_active ? "Active" : "Inactive")
+        ]);
+        data.users = users.map(u => ({
+            id: u.user_id,
+            code: u.user_code || `EMP-${u.user_id}`,
+            name: u.user_name,
+            department: u.dept_name || "-",
+            designation: u.desg_name || "-",
+            shift: u.shift_name || "Open Shift",
+            phone: u.phone_no || "-",
+            email: u.email || "-",
+            joiningDate: u.joining_date ? String(u.joining_date).slice(0, 10) : (u.created_at ? String(u.created_at).slice(0, 10) : "-"),
+            role: u.user_type || "employee",
+            status: u.is_deleted ? "Deleted" : (u.is_active ? "Active" : "Inactive"),
+            is_active: Boolean(u.is_active),
+            is_deleted: Boolean(u.is_deleted)
+        }));
     }
 
     if (type !== "employee_master") {

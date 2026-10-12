@@ -127,7 +127,7 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
         .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
         .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
         .select(
-            "u.user_id", "u.user_name", "u.is_active", "u.is_deleted",
+            "u.user_id", "u.user_name", "u.user_code", "u.is_active", "u.is_deleted",
             "u.dept_id", "u.desg_id", "u.shift_id",
             "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type",
             "s.policy_rules", "s.shift_name", "u.created_at", "u.joining_date"
