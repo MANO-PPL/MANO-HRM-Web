@@ -21,8 +21,6 @@ const REPORT_TYPE_COLUMN_KEYS = {
     matrix_daily: ['timeIn', 'timeOut', 'status', 'workedHours', 'late'],
     matrix_weekly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
     matrix_monthly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
-    attendance_matrix_weekly: ['shift', 'workedHours', 'requiredHours', 'late', 'attendanceDays'],
-    attendance_matrix_monthly: ['shift', 'workedHours', 'requiredHours', 'late', 'attendanceDays'],
     attendance_detailed: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'location'],
     attendance_summary: ['workedHours', 'requiredHours', 'late', 'attendanceDays']
 };
@@ -112,23 +110,23 @@ const FullReportFiltersPanel = ({
     onOpenHistory
 }) => {
     return (
-        <div data-tour-id="reports-filters" className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-3 space-y-3 shrink-0">
-            {/* Row 1: Parameters Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-3 items-end">
+        <div data-tour-id="reports-filters" className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-3 space-y-3 shrink-0 no-print">
+            {/* Row 1: Parameters Grid (All 7 filters in a single clean row on desktop; 5 for employee_master) */}
+            <div className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${isEmployee ? 'xl:grid-cols-4 min-[1200px]:grid-cols-4' : tableReportType === 'employee_master' ? 'xl:grid-cols-5 min-[1200px]:grid-cols-5' : 'xl:grid-cols-7 min-[1200px]:grid-cols-7'} gap-2 2xl:gap-2.5 items-end`}>
                 {/* Custom Report Type Dropdown */}
-                <div className={`relative ${isEmployee ? 'xl:col-span-3' : 'xl:col-span-2'}`} ref={tableTypeDropdownRef}>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Report Type</label>
+                <div className="relative xl:col-span-1" ref={tableTypeDropdownRef}>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Report Type</label>
                     <button
                         type="button"
                         onClick={() => setTableIsTypeDropdownOpen(!tableIsTypeDropdownOpen)}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                        className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                     >
                         <span className="truncate">{reportTypeOptions.find(opt => opt.value === tableReportType)?.label || tableReportType}</span>
-                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsTypeDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${tableIsTypeDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {tableIsTypeDropdownOpen && (
-                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
+                        <div className="absolute left-0 mt-1 min-w-[230px] w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
                             {(reportTypeGroups || [{ group: null, options: reportTypeOptions }]).map((g, gIdx) => (
                                 <div key={g.group || 'ungrouped'} className={gIdx > 0 ? 'pt-1.5 mt-1.5 border-t border-slate-100 dark:border-github-dark-border' : ''}>
                                     {g.group && (
@@ -159,8 +157,8 @@ const FullReportFiltersPanel = ({
                 </div>
 
                 {isEmployee ? (
-                    <div className="relative xl:col-span-3">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Employee</label>
+                    <div className="relative xl:col-span-1">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Employee</label>
                         <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 h-[38px]">
                             <User size={14} className="text-indigo-500 shrink-0" />
                             <span className="truncate">{currentUser?.user_name || 'My Reports'}</span>
@@ -169,24 +167,24 @@ const FullReportFiltersPanel = ({
                 ) : (
                     <>
                         {/* Custom Searchable Department Selector */}
-                        <div className="relative xl:col-span-2" ref={tableDeptDropdownRef}>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Department</label>
+                        <div className="relative xl:col-span-1" ref={tableDeptDropdownRef}>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Department</label>
                     <button
                         type="button"
                         onClick={() => {
                             setTableIsDeptDropdownOpen(!tableIsDeptDropdownOpen);
                             setTableDeptSearchQuery('');
                         }}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                        className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                     >
                         <span className="truncate">
-                            {departments.find(d => d.dept_id === tableDeptId)?.dept_name || 'All Departments'}
+                            {departments.find(d => String(d.dept_id) === String(tableDeptId))?.dept_name || 'All Departments'}
                         </span>
-                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsDeptDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${tableIsDeptDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {tableIsDeptDropdownOpen && (
-                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                        <div className="absolute left-0 mt-1 min-w-[220px] w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
                             <div className="relative mb-2">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
@@ -221,7 +219,7 @@ const FullReportFiltersPanel = ({
                                                 setTableDeptId(d.dept_id);
                                                 setTableIsDeptDropdownOpen(false);
                                             }}
-                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${tableDeptId === d.dept_id
+                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${String(tableDeptId) === String(d.dept_id)
                                                 ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
                                                 : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
                                                 }`}
@@ -240,24 +238,24 @@ const FullReportFiltersPanel = ({
                 </div>
 
                 {/* Custom Searchable Designation Selector */}
-                <div className="relative xl:col-span-2" ref={tableDesgDropdownRef}>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Designation</label>
+                <div className="relative xl:col-span-1" ref={tableDesgDropdownRef}>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Designation</label>
                     <button
                         type="button"
                         onClick={() => {
                             setTableIsDesgDropdownOpen(!tableIsDesgDropdownOpen);
                             setTableDesgSearchQuery('');
                         }}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                        className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                     >
                         <span className="truncate">
                             {designations.find(d => String(d.desg_id) === String(tableDesgId))?.desg_name || 'All Designations'}
                         </span>
-                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsDesgDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${tableIsDesgDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {tableIsDesgDropdownOpen && (
-                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                        <div className="absolute left-0 mt-1 min-w-[220px] w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
                             <div className="relative mb-2">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
@@ -311,24 +309,24 @@ const FullReportFiltersPanel = ({
                 </div>
 
                 {/* Custom Searchable Shift Selector */}
-                <div className="relative xl:col-span-2" ref={tableShiftDropdownRef}>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Shift</label>
+                <div className="relative xl:col-span-1" ref={tableShiftDropdownRef}>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Shift</label>
                     <button
                         type="button"
                         onClick={() => {
                             setTableIsShiftDropdownOpen(!tableIsShiftDropdownOpen);
                             setTableShiftSearchQuery('');
                         }}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                        className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                     >
                         <span className="truncate">
                             {tableShiftId === 'open_shift' ? 'Open Shift' : (shifts.find(s => String(s.shift_id) === String(tableShiftId))?.shift_name || 'All Shifts')}
                         </span>
-                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${tableIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {tableIsShiftDropdownOpen && (
-                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                        <div className="absolute left-0 mt-1 min-w-[200px] w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
                             <div className="relative mb-2">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
@@ -395,22 +393,22 @@ const FullReportFiltersPanel = ({
                 </div>
 
                 {/* Custom Searchable Employee Select */}
-                <div className="relative xl:col-span-2" ref={tableEmpDropdownRef}>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Employee</label>
+                <div className="relative xl:col-span-1" ref={tableEmpDropdownRef}>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Employee</label>
                     <button
                         type="button"
                         onClick={() => {
                             setTableIsEmpDropdownOpen(!tableIsEmpDropdownOpen);
                             setTableEmpSearchQuery('');
                         }}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                        className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                     >
                         <span className="truncate">{tableSelectedEmployeeName}</span>
-                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${tableIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {tableIsEmpDropdownOpen && (
-                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                        <div className="absolute left-0 mt-1 min-w-[220px] w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
                             <div className="relative mb-2">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
@@ -445,7 +443,7 @@ const FullReportFiltersPanel = ({
                                                 setTableEmployeeId(emp.user_id);
                                                 setTableIsEmpDropdownOpen(false);
                                             }}
-                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${tableEmployeeId === emp.user_id
+                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${String(tableEmployeeId) === String(emp.user_id)
                                                 ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
                                                 : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
                                                 }`}
@@ -467,9 +465,9 @@ const FullReportFiltersPanel = ({
 
                 {/* Date Picker Grid Item */}
                 {tableReportType !== 'employee_master' && (
-                    <div className={isEmployee ? 'xl:col-span-3' : 'xl:col-span-2'}>
+                    <div className="relative xl:col-span-1">
                         {tableUseCustomRange ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <DatePicker
                                     label="Start Date"
                                     value={tableCustomStartDate}
@@ -485,15 +483,15 @@ const FullReportFiltersPanel = ({
                             </div>
                         ) : (
                             <div>
-                                {['matrix_monthly', 'attendance_matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(tableReportType) ? (
+                                {['matrix_monthly', 'attendance_summary'].includes(tableReportType) ? (
                                     <MonthPicker
                                         label="Select Month"
                                         value={tableMonth}
                                         onChange={(val) => setTableMonth(val)}
                                         compact={true}
                                     />
-                                ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType) ? (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                ) : tableReportType === 'matrix_weekly' ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                         <MonthPicker
                                             label="Select Month"
                                             value={tableMonth}
@@ -501,18 +499,18 @@ const FullReportFiltersPanel = ({
                                             compact={true}
                                         />
                                         <div className="relative" ref={tableWeekDropdownRef}>
-                                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Select Week</label>
+                                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Select Week</label>
                                             <button
                                                 type="button"
                                                 onClick={() => setTableIsWeekDropdownOpen(!tableIsWeekDropdownOpen)}
-                                                className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                                                className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                                             >
                                                 <span className="truncate">{tableWeeks.find(w => w.value === tableWeek)?.label || 'Select Week'}</span>
-                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsWeekDropdownOpen ? 'rotate-180' : ''}`} />
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${tableIsWeekDropdownOpen ? 'rotate-180' : ''}`} />
                                             </button>
 
                                             {tableIsWeekDropdownOpen && (
-                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
+                                                <div className="absolute left-0 mt-1 min-w-[200px] w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
                                                     {tableWeeks.map((w, idx) => (
                                                         <button
                                                             key={idx}
@@ -548,17 +546,17 @@ const FullReportFiltersPanel = ({
 
                 {/* Columns Selection Dropdown */}
                 {tableReportType !== 'employee_master' && (
-                    <div className="relative xl:col-span-2" ref={tableColsDropdownRef}>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Columns to Include</label>
+                    <div className="relative xl:col-span-1" ref={tableColsDropdownRef}>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5 truncate">Columns to Include</label>
                         <button
                             type="button"
                             onClick={() => setTableIsColsDropdownOpen(!tableIsColsDropdownOpen)}
-                            className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                            className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                         >
                             <span className="truncate">
                                 {(REPORT_TYPE_COLUMN_KEYS[tableReportType] || []).filter(k => tableExportColumns[k]).length} Columns Selected
                             </span>
-                            <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsColsDropdownOpen ? 'rotate-180' : ''}`} />
+                            <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${tableIsColsDropdownOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {tableIsColsDropdownOpen && (

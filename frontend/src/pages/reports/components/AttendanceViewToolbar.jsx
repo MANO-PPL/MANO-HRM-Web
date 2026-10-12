@@ -113,13 +113,13 @@ const AttendanceViewToolbar = ({
             {/* Month / Week / Date Pickers */}
             {attendanceReportType !== 'employee_master' && (
                 <div className="flex items-center gap-2">
-                    {['matrix_monthly', 'attendance_matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(attendanceReportType) ? (
+                    {['matrix_monthly', 'attendance_summary'].includes(attendanceReportType) ? (
                         <MonthPicker
                             value={attendanceMonth}
                             onChange={(val) => setAttendanceMonth(val)}
                             compact={true}
                         />
-                    ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(attendanceReportType) ? (
+                    ) : attendanceReportType === 'matrix_weekly' ? (
                         <div className="flex items-center gap-2">
                             <MonthPicker
                                 value={attendanceMonth}
@@ -219,7 +219,7 @@ const AttendanceViewToolbar = ({
             {isEmployee ? (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl text-xs font-medium text-indigo-700 dark:text-indigo-300">
                     <User size={13} className="text-indigo-500" />
-                    <span>{currentUser?.user_name || 'My Attendance Matrix'}</span>
+                    <span>{currentUser?.user_name || 'My Attendance Records'}</span>
                 </div>
             ) : (
                 /* Unified Filter Popover Button */

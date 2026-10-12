@@ -34,13 +34,10 @@ const ALL_REPORT_TYPE_OPTIONS = [
     { value: 'matrix_daily', label: 'Daily Attendance Report', group: 'Attendance Reports' },
     { value: 'matrix_weekly', label: 'Weekly Attendance Report', group: 'Attendance Reports' },
     { value: 'matrix_monthly', label: 'Monthly Attendance Report', group: 'Attendance Reports' },
-    { value: 'attendance_detailed', label: 'Detailed Attendance Report', group: 'Attendance Reports' },
-    { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix', group: 'Attendance Matrix' },
-    { value: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix', group: 'Attendance Matrix' },
     { value: 'attendance_summary', label: 'Monthly Summary Report', group: 'Summary' },
     { value: 'employee_master', label: 'Employee Master Data', group: 'Employee Data' }
 ];
-const REPORT_TYPE_GROUP_ORDER = ['Attendance Reports', 'Attendance Matrix', 'Summary', 'Employee Data'];
+const REPORT_TYPE_GROUP_ORDER = ['Attendance Reports', 'Summary', 'Employee Data'];
 
 const Reports = () => {
     const navigate = useNavigate();
@@ -72,7 +69,7 @@ const Reports = () => {
     const [tableDate, setTableDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableEmployeeId, setTableEmployeeId] = useState(isEmployee ? currentUserId : '');
     const [tableWeek, setTableWeek] = useState('');
-    const [tableReportType, setTableReportType] = useState(isEmployee ? 'attendance_detailed' : 'matrix_monthly');
+    const [tableReportType, setTableReportType] = useState('matrix_monthly');
     const [tableUseCustomRange, setTableUseCustomRange] = useState(false);
 
     useEffect(() => {
@@ -356,7 +353,7 @@ const Reports = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const attendanceSelectedEmployeeName = employees.find(emp => emp.user_id === attendanceEmployeeId)?.user_name || 'All Employees';
+    const attendanceSelectedEmployeeName = employees.find(emp => String(emp.user_id) === String(attendanceEmployeeId))?.user_name || 'All Employees';
     const attendanceFilteredEmployees = employees.filter(emp => {
         const matchesDept = !attendanceDeptId || String(emp.dept_id) === String(attendanceDeptId);
         const matchesDesg = !attendanceDesgId || String(emp.desg_id) === String(attendanceDesgId);
@@ -365,7 +362,7 @@ const Reports = () => {
         return matchesDept && matchesDesg && matchesShift && matchesQuery;
     });
 
-    const tableSelectedEmployeeName = employees.find(emp => emp.user_id === tableEmployeeId)?.user_name || 'All Employees';
+    const tableSelectedEmployeeName = employees.find(emp => String(emp.user_id) === String(tableEmployeeId))?.user_name || 'All Employees';
     const tableFilteredEmployees = employees.filter(emp => {
         const matchesDept = !tableDeptId || String(emp.dept_id) === String(tableDeptId);
         const matchesDesg = !tableDesgId || String(emp.desg_id) === String(tableDesgId);
@@ -390,9 +387,9 @@ const Reports = () => {
     }, [tableWeeks]);
 
     useEffect(() => {
-        if (isEmployee) return;
+        if (isEmployee || employees.length === 0) return;
         if (attendanceEmployeeId) {
-            const emp = employees.find(e => e.user_id === attendanceEmployeeId);
+            const emp = employees.find(e => String(e.user_id) === String(attendanceEmployeeId));
             if (emp) {
                 const deptMismatch = attendanceDeptId && String(emp.dept_id) !== String(attendanceDeptId);
                 const desgMismatch = attendanceDesgId && String(emp.desg_id) !== String(attendanceDesgId);
@@ -405,9 +402,9 @@ const Reports = () => {
     }, [isEmployee, attendanceDeptId, attendanceDesgId, attendanceShiftId, employees, attendanceEmployeeId]);
 
     useEffect(() => {
-        if (isEmployee) return;
+        if (isEmployee || employees.length === 0) return;
         if (tableEmployeeId) {
-            const emp = employees.find(e => e.user_id === tableEmployeeId);
+            const emp = employees.find(e => String(e.user_id) === String(tableEmployeeId));
             if (emp) {
                 const deptMismatch = tableDeptId && String(emp.dept_id) !== String(tableDeptId);
                 const desgMismatch = tableDesgId && String(emp.desg_id) !== String(tableDesgId);
@@ -424,7 +421,7 @@ const Reports = () => {
         const fetchEmployeesAndDepts = async () => {
             try {
                 const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
-                    adminService.getAllUsers({ activeOnly: true }),
+                    adminService.getAllUsers({ includeWorkLocation: false }),
                     adminService.getDepartments(),
                     adminService.getDesignations(),
                     adminService.getShifts()
@@ -478,7 +475,7 @@ const Reports = () => {
     const activeFilters = useMemo(() => {
         const isCard = previewMode === 'card';
         const rType = isCard ? attendanceReportType : tableReportType;
-        const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(rType);
+        const isWeekly = rType === 'matrix_weekly';
 
         const selectedMonth = isCard ? attendanceMonth : tableMonth;
         const selectedDate = isCard ? attendanceDate : tableDate;
@@ -530,7 +527,7 @@ const Reports = () => {
         tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableDeptId, tableDesgId, tableShiftId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
     ]);
 
-    // Build a stable cache key from activeFilters
+    // Build a stable cache key from activeFilters primitives
     const cacheKey = useMemo(() => {
         return JSON.stringify({
             selectedMonth: activeFilters.selectedMonth,
@@ -545,23 +542,39 @@ const Reports = () => {
             customEndDate: activeFilters.customEndDate,
             exportColumnsKey: activeFilters.exportColumnsKey
         });
-    }, [activeFilters]);
+    }, [
+        activeFilters.selectedMonth,
+        activeFilters.reportType,
+        activeFilters.dateToUse,
+        activeFilters.selectedEmployeeId,
+        activeFilters.selectedDeptId,
+        activeFilters.selectedDesgId,
+        activeFilters.selectedShiftId,
+        activeFilters.useCustomRange,
+        activeFilters.customStartDate,
+        activeFilters.customEndDate,
+        activeFilters.exportColumnsKey
+    ]);
+
+    const activeFiltersRef = useRef(activeFilters);
+    activeFiltersRef.current = activeFilters;
 
     const fetchAndCachePreview = useCallback(async ({ key, cancelled, showLoadingIfNoCache }) => {
         if (showLoadingIfNoCache) setLoadingPreview(true);
 
+        const currentFilters = activeFiltersRef.current;
         try {
             const res = await adminService.getReportPreview(
-                activeFilters.selectedMonth,
-                activeFilters.reportType,
-                activeFilters.dateToUse,
-                activeFilters.selectedEmployeeId,
-                activeFilters.qStart,
-                activeFilters.qEnd,
-                activeFilters.exportColumnsKey,
-                activeFilters.selectedDeptId,
-                activeFilters.selectedDesgId,
-                activeFilters.selectedShiftId
+                currentFilters.selectedMonth,
+                currentFilters.reportType,
+                currentFilters.dateToUse,
+                currentFilters.selectedEmployeeId,
+                currentFilters.qStart,
+                currentFilters.qEnd,
+                currentFilters.exportColumnsKey,
+                currentFilters.selectedDeptId,
+                currentFilters.selectedDesgId,
+                currentFilters.selectedShiftId
             );
             if (!cancelled && res.ok) {
                 attendanceViewCache.set(key, { data: res.data, fetchedAt: Date.now() });
@@ -576,7 +589,7 @@ const Reports = () => {
         } finally {
             if (!cancelled) setLoadingPreview(false);
         }
-    }, [activeFilters]);
+    }, []);
 
     // Reset hover and detail states when active filter settings or view modes change
     useEffect(() => {
@@ -649,7 +662,7 @@ const Reports = () => {
     const handleGenerate = async () => {
         setIsGenerating(true);
         try {
-            const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType);
+            const isWeekly = tableReportType === 'matrix_weekly';
             const dateToUse = (isWeekly && !tableUseCustomRange) ? tableWeek : tableDate;
 
             const qStart = tableUseCustomRange ? tableCustomStartDate : "";
@@ -942,7 +955,10 @@ const Reports = () => {
             setHoveredRecord(record);
             setHoveredPosition({
                 top: rect.top,
-                left: rect.left + rect.width / 2
+                bottom: rect.bottom,
+                left: rect.left + rect.width / 2,
+                height: rect.height,
+                width: rect.width
             });
         }
     };
@@ -959,13 +975,13 @@ const Reports = () => {
 
     return (
         <DashboardLayout title={isEmployee ? "My Reports" : "Live Reports"} noPadding={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
-            <div className="min-h-[calc(100vh-64px)] px-2 pt-1.5 pb-2.5 flex flex-col space-y-2.5">
+            <div className="min-h-[calc(100vh-64px)] px-2 pt-1.5 pb-2.5 flex flex-col space-y-2.5 print:min-h-0 print:p-0 print:space-y-0">
                 {/* Switcher & Filters Row */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0 no-print">
                     {/* View Switcher Tabs */}
                     <div className="flex w-fit items-center gap-2 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         {[
-                            { id: 'card', label: isEmployee ? 'Attendance Matrix' : 'Attendance View', icon: TrendingUp, tourId: 'reports-attendance-view-tab' },
+                            { id: 'card', label: 'Attendance Matrix', icon: TrendingUp, tourId: 'reports-attendance-view-tab' },
                             { id: 'table', label: isEmployee ? 'Excel Report' : 'Full Report', icon: Table, tourId: 'reports-full-report-tab' }
                         ].map((tab) => {
                             const isSelected = previewMode === tab.id;

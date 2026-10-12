@@ -157,54 +157,25 @@ const AttendanceMatrixGrid = ({
     };
 
     const summaryColumns = useMemo(() => {
-        // In PINNED mode: all visible/filtered columns are pinned stationary on right.
-        // In DEFAULT mode: only Present and Absent are pinned on right (unless scrolled to end when draggable columns exist).
-        // Other filtered columns are draggable (not sticky).
-        const isPaSticky = !isAllTotalsSticky && !isScrolledToEnd;
-
-        const firstStickyIdx = visibleCols.findIndex(col => {
-            if (isAllTotalsSticky) return true;
-            if (isPaSticky && (col.key === 'present' || col.key === 'absent')) return true;
-            return false;
-        });
-
         return visibleCols.map((col, index) => {
             const isFirst = index === 0;
             const isLast = index === visibleCols.length - 1;
 
-            let isSticky = false;
-            let right = 0;
-
-            if (isAllTotalsSticky) {
-                isSticky = true;
-                // Sum widths of visible columns after this one
-                right = visibleCols
-                    .slice(index + 1)
-                    .reduce((sum, c) => sum + c.width, 0);
-            } else if (isPaSticky) {
-                if (col.key === 'present') {
-                    isSticky = true;
-                    // If absent is also visible, P is to the left of A (offset by A's width)
-                    const absentCol = visibleCols.find(c => c.key === 'absent');
-                    right = absentCol ? absentCol.width : 0;
-                } else if (col.key === 'absent') {
-                    isSticky = true;
-                    right = 0;
-                }
-            }
-
-            const isStickyFirst = isSticky && index === firstStickyIdx;
+            // All selected summary columns neatly pinned to the right with cumulative offsets
+            const right = visibleCols
+                .slice(index + 1)
+                .reduce((sum, c) => sum + c.width, 0);
 
             return {
                 ...col,
                 isFirst,
                 isLast,
-                isSticky,
+                isSticky: true,
                 right,
-                isStickyFirst
+                isStickyFirst: isFirst
             };
         });
-    }, [visibleCols, isAllTotalsSticky, isScrolledToEnd]);
+    }, [visibleCols]);
 
     if (loadingPreview) {
         return (
@@ -231,7 +202,7 @@ const AttendanceMatrixGrid = ({
             className="w-full overflow-auto table-scrollbar rounded-xl border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card shadow-sm animate-none"
             style={{ isolation: 'isolate', maxHeight: 'calc(100vh - 120px)' }}
         >
-            <table className="w-full text-left border-collapse" style={{ minWidth: 'max-content' }}>
+            <table className="w-full text-left" style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: 'max-content' }}>
                 <thead className="sticky top-0 z-30">
                     <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
                         {/* 1. Stationary Left: Employee Header */}
