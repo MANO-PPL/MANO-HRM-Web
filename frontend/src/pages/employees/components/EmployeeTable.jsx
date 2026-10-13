@@ -1,5 +1,6 @@
-import React from 'react';
-import { Search, RotateCcw, Trash2, UserCheck, UserX, Edit2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, RotateCcw, Trash2, UserCheck, UserX, Edit2, Maximize2 } from 'lucide-react';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const EmployeeTable = ({
     loading = false,
@@ -14,6 +15,8 @@ const EmployeeTable = ({
     setEditMode,
     handleDelete
 }) => {
+    const [profilePictureData, setProfilePictureData] = useState(null);
+
     return (
         <div className="flex-1 min-h-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm transition-colors duration-300 flex flex-col">
             <div className="flex-1 overflow-auto custom-scrollbar">
@@ -64,9 +67,34 @@ const EmployeeTable = ({
                                         {visibleColumns.employee && (
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-sm">
+                                                    <div
+                                                        onClick={(e) => {
+                                                            if (emp.profile_image_url) {
+                                                                e.stopPropagation();
+                                                                setProfilePictureData({
+                                                                    imageUrl: `${emp.profile_image_url}?t=${avatarTimestamp}`,
+                                                                    name: emp.name,
+                                                                    role: emp.designation,
+                                                                    department: emp.department,
+                                                                    userCode: emp.user_code,
+                                                                    email: emp.email,
+                                                                    phone: emp.phone,
+                                                                    status: emp.status
+                                                                });
+                                                            }
+                                                        }}
+                                                        title={emp.profile_image_url ? `View ${emp.name}'s profile photo` : emp.name}
+                                                        className={`relative group/avatar w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-sm transition-all shrink-0 ${
+                                                            emp.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50' : ''
+                                                        }`}
+                                                    >
                                                         {emp.profile_image_url ? (
-                                                            <img src={`${emp.profile_image_url}?t=${avatarTimestamp}`} alt={emp.name} className="w-full h-full object-cover" />
+                                                            <>
+                                                                <img src={`${emp.profile_image_url}?t=${avatarTimestamp}`} alt={emp.name} className="w-full h-full object-cover" />
+                                                                <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                                                    <Maximize2 size={14} />
+                                                                </div>
+                                                            </>
                                                         ) : (
                                                             emp.name.charAt(0)
                                                         )}
@@ -85,7 +113,7 @@ const EmployeeTable = ({
                                         {visibleColumns.roleDept && (
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
-                                                    <span className="text-sm font-bold text-slate-750 dark:text-slate-350">{emp.designation}</span>
+                                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{emp.designation}</span>
                                                     <span className="text-xs font-semibold text-slate-400">{emp.department}</span>
                                                 </div>
                                             </td>
@@ -247,7 +275,7 @@ const EmployeeTable = ({
                             <tr>
                                 <td colSpan="12" className="px-6 py-12 text-center text-slate-500 dark:text-github-dark-muted font-medium">
                                     <div className="flex flex-col items-center gap-2">
-                                        <Search size={32} className="text-slate-350 dark:text-slate-700" />
+                                        <Search size={32} className="text-slate-400 dark:text-slate-700" />
                                         <p>No employees found matching the filters.</p>
                                     </div>
                                 </td>
@@ -256,6 +284,13 @@ const EmployeeTable = ({
                     </tbody>
                 </table>
             </div>
+
+            {/* Profile Picture Modal */}
+            <ProfilePictureModal
+                isOpen={!!profilePictureData}
+                onClose={() => setProfilePictureData(null)}
+                {...profilePictureData}
+            />
         </div>
     );
 };

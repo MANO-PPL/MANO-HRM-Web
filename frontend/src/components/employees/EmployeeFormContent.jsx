@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, X, User, Mail, Phone, Briefcase, Clock, Camera, Plus, ChevronDown, Eye, EyeOff, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Save, X, User, Mail, Phone, Briefcase, Clock, Camera, Plus, ChevronDown, Eye, EyeOff, AlertTriangle, ShieldAlert, Maximize2 } from 'lucide-react';
 import { adminService, adminCacheData } from '../../services/adminService';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
+import ProfilePictureModal from '../modals/ProfilePictureModal';
 
 const QuickAddPopover = ({ title, onAdd, onClose, isOpen }) => {
     const [newValue, setNewValue] = useState("");
@@ -98,6 +99,7 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
     const [touched, setTouched] = useState({});
     const [isShiftOpen, setIsShiftOpen] = useState(false);
     const [shiftSearchQuery, setShiftSearchQuery] = useState('');
+    const [lightboxData, setLightboxData] = useState(null);
     const [isDeptOpen, setIsDeptOpen] = useState(false);
     const [deptSearchQuery, setDeptSearchQuery] = useState('');
     const [isDesgOpen, setIsDesgOpen] = useState(false);
@@ -417,7 +419,25 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                             <div className={`absolute top-0 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400 blur-2xl opacity-20 pointer-events-none ${isSidebarMode ? 'w-32 h-32' : 'w-48 h-48 md:w-56 md:h-56'}`}></div>
                             <div className={`relative rounded-full border-4 border-white dark:border-github-dark-border shadow-xl overflow-hidden bg-slate-100 dark:bg-github-dark-subtle flex items-center justify-center text-slate-400 z-10 ${isSidebarMode ? 'w-24 h-24' : 'w-48 h-48 md:w-48 md:h-48'}`}>
                                 {formData.profile_image ? (
-                                    <img src={formData.profile_image} alt="Profile" className="w-full h-full object-cover" />
+                                    <div
+                                        onClick={() => {
+                                            setLightboxData({
+                                                imageUrl: formData.profile_image,
+                                                name: formData.user_name || 'Employee Profile Photo',
+                                                role: designations.find(d => String(d.desg_id) === String(formData.desg_id))?.desg_name || formData.user_type,
+                                                department: departments.find(d => String(d.dept_id) === String(formData.dept_id))?.dept_name,
+                                                email: formData.email,
+                                                phone: formData.phone_no
+                                            });
+                                        }}
+                                        title="Click to view full photo"
+                                        className="w-full h-full cursor-pointer relative group/img overflow-hidden"
+                                    >
+                                        <img src={formData.profile_image} alt="Profile" className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                            <Maximize2 size={isSidebarMode ? 20 : 32} />
+                                        </div>
+                                    </div>
                                 ) : (
                                     <User size={isSidebarMode ? 40 : 80} className="opacity-50" />
                                 )}
@@ -837,6 +857,13 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                     </div>
                 </div>
             </div>
+
+            {/* Profile Picture Modal */}
+            <ProfilePictureModal
+                isOpen={!!lightboxData}
+                onClose={() => setLightboxData(null)}
+                {...lightboxData}
+            />
         </form>
     );
 };

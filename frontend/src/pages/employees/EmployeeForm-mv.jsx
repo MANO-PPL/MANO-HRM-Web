@@ -453,7 +453,7 @@ const EmployeeForm = () => {
             showBackButton={true}
             headerAction={SaveButton}
         >
-            <form onSubmit={handleSubmit} className="space-y-6 pb-20 relative min-h-screen p-4">
+            <form onSubmit={handleSubmit} className="space-y-6 pb-6 relative w-full p-4">
 
 
                 {/* Form Card */}

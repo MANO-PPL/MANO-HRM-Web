@@ -242,7 +242,7 @@ const BulkUpload = () => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-6 pb-24">
+                <div className="flex-1 overflow-y-auto px-4 py-6 pb-6">
                     {/* Step 1: Upload */}
                     {step === 1 && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -291,7 +291,7 @@ const BulkUpload = () => {
                             <div className="bg-white dark:bg-dark-card rounded-[2rem] border border-slate-100 dark:border-github-dark-border overflow-hidden shadow-xl shadow-indigo-500/5">
                                 <div className="p-5 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-slate-50/20 dark:bg-github-dark-subtle/10">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl flex items-center justify-center text-indigo-650 animate-pulse">
+                                        <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl flex items-center justify-center text-indigo-600 animate-pulse">
                                             <FileText size={18} />
                                         </div>
                                         <div className="flex-1 min-w-0 text-left">

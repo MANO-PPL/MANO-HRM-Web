@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    X, Edit2, User, CheckCircle2, FileText, Sparkles, Award
+    X, Edit2, User, CheckCircle2, FileText, Sparkles, Award, Maximize2
 } from 'lucide-react';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 import ProfileTab from './tabs/ProfileTab';
 import ChecklistTab from './tabs/ChecklistTab';
 import DocumentsTab from './tabs/DocumentsTab';
@@ -56,6 +57,8 @@ const EmployeeProfileDrawer = ({
     selectedCycleId,
     setSelectedCycleId
 }) => {
+    const [profilePictureData, setProfilePictureData] = useState(null);
+
     return (
         <AnimatePresence>
             {selectedEmployee && (
@@ -80,8 +83,36 @@ const EmployeeProfileDrawer = ({
                         {/* Drawer Header */}
                         <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/30">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">
-                                    {selectedEmployee.name.charAt(0)}
+                                <div
+                                    onClick={() => {
+                                        if (selectedEmployee.profile_image_url) {
+                                            setProfilePictureData({
+                                                imageUrl: `${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`,
+                                                name: selectedEmployee.name,
+                                                role: selectedEmployee.designation,
+                                                department: selectedEmployee.department,
+                                                userCode: selectedEmployee.user_code,
+                                                email: selectedEmployee.email,
+                                                phone: selectedEmployee.phone,
+                                                status: selectedEmployee.status
+                                            });
+                                        }
+                                    }}
+                                    title={selectedEmployee.profile_image_url ? `View ${selectedEmployee.name}'s profile photo` : selectedEmployee.name}
+                                    className={`relative group/header-avatar w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-sm shrink-0 transition-all ${
+                                        selectedEmployee.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50' : ''
+                                    }`}
+                                >
+                                    {selectedEmployee.profile_image_url ? (
+                                        <>
+                                            <img src={`${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`} alt={selectedEmployee.name} className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/header-avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                                <Maximize2 size={14} />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        selectedEmployee.name.charAt(0)
+                                    )}
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text leading-tight">
@@ -159,6 +190,7 @@ const EmployeeProfileDrawer = ({
                                     documentTemplates={documentTemplates}
                                     handleChecklistTemplateChange={handleChecklistTemplateChange}
                                     handleDocumentTemplateChange={handleDocumentTemplateChange}
+                                    onOpenAvatar={(data) => setProfilePictureData(data)}
                                 />
                             )}
 
@@ -278,6 +310,13 @@ const EmployeeProfileDrawer = ({
                             </button>
                         </div>
                     </motion.div>
+
+                    {/* Profile Picture Modal */}
+                    <ProfilePictureModal
+                        isOpen={!!profilePictureData}
+                        onClose={() => setProfilePictureData(null)}
+                        {...profilePictureData}
+                    />
                 </>
             )}
         </AnimatePresence>
