@@ -327,7 +327,12 @@ export async function buildMusterRollData({
 }
 
 export async function getPreviewData({ type, org_id, month, startDate, endDate, targetUserId, columns, dept_id, desg_id, shift_id }) {
-    const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
+    let colsObj = {};
+    try {
+        colsObj = typeof columns === 'string' ? (columns.trim() ? JSON.parse(columns) : {}) : (columns || {});
+    } catch {
+        colsObj = {};
+    }
     let data = { columns: [], rows: [] };
     const todayStr = await getTodayStr(org_id);
 
@@ -409,60 +414,56 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 todayStr
             });
 
+            const showPosition = colsObj.position !== false && colsObj.positionName !== false;
+            const showWorkHour = colsObj.workedHours !== false && colsObj.workHour !== false;
+            const showIn = colsObj.timeIn !== false && colsObj.inPunch !== false && colsObj.in !== false;
+            const showOut = colsObj.timeOut !== false && colsObj.outPunch !== false && colsObj.out !== false;
+            const showEmpCode = colsObj.employeeCode !== false && colsObj.empCode !== false;
+            const showDaysInMonth = colsObj.daysInMonth !== false;
+            const showPresentDays = colsObj.presentDays !== false;
+
+            musterRoll.columnsConfig = colsObj;
             data.musterRoll = musterRoll;
 
-            // Columns and 4-row layout
-            const baseCols = ["SR No.", "Name", "Position", "Employee Code", "Grade", "Days in Month", "Present Days"];
+            // Columns and dynamic layout
+            const baseCols = ["SR No.", "Name", "Attributes"];
+            if (showEmpCode) baseCols.push("Employee Code");
+            if (showDaysInMonth) baseCols.push("Days in Month");
+            if (showPresentDays) baseCols.push("Present Days");
+
             const dateLabels = musterRoll.dateHeaders.map(dh => `${dh.dayOfWeek}\n${dh.dateFormatted}`);
             data.columns = [...baseCols, ...dateLabels];
 
-            // Structured 4 rows per employee
+            // Structured rows per employee based on user selected attributes
             const formattedRows = [];
             musterRoll.employees.forEach(emp => {
-                // Row 1: Status units
-                formattedRows.push([
+                const prefixRow1 = [
                     emp.srNo,
                     emp.name,
-                    emp.position,
-                    emp.employeeCode,
-                    emp.grade,
-                    emp.daysInMonth,
-                    emp.presentDays,
-                    ...emp.statusRow
-                ]);
-                // Row 2: Work Hour
-                formattedRows.push([
-                    "",
-                    "",
-                    "Work Hour",
-                    "",
-                    "",
-                    "",
-                    "",
-                    ...emp.workHourRow
-                ]);
-                // Row 3: In
-                formattedRows.push([
-                    "",
-                    "",
-                    "In",
-                    "",
-                    "",
-                    "",
-                    "",
-                    ...emp.inRow
-                ]);
-                // Row 4: Out
-                formattedRows.push([
-                    "",
-                    "",
-                    "Out",
-                    "",
-                    "",
-                    "",
-                    "",
-                    ...emp.outRow
-                ]);
+                    showPosition ? (emp.position || "Status") : "Status"
+                ];
+                if (showEmpCode) prefixRow1.push(emp.employeeCode);
+                if (showDaysInMonth) prefixRow1.push(emp.daysInMonth);
+                if (showPresentDays) prefixRow1.push(emp.presentDays);
+                formattedRows.push([...prefixRow1, ...emp.statusRow]);
+
+                const emptyPrefix = (label) => {
+                    const row = ["", "", label];
+                    if (showEmpCode) row.push("");
+                    if (showDaysInMonth) row.push("");
+                    if (showPresentDays) row.push("");
+                    return row;
+                };
+
+                if (showWorkHour) {
+                    formattedRows.push([...emptyPrefix("Work Hour"), ...emp.workHourRow]);
+                }
+                if (showIn) {
+                    formattedRows.push([...emptyPrefix("In"), ...emp.inRow]);
+                }
+                if (showOut) {
+                    formattedRows.push([...emptyPrefix("Out"), ...emp.outRow]);
+                }
             });
 
             data.rows = formattedRows;

@@ -7,11 +7,15 @@ import DatePicker from '../../../components/DatePicker';
 // directly against reportsServices.js/reportsController.js's `colsObj.<key> !== false` checks
 // per type, so the picker never offers a toggle that would silently do nothing for that type.
 const COLUMN_TOGGLE_LABELS = {
+    position: 'Position Name',
+    workedHours: 'Work Hour',
+    timeIn: 'In Punch',
+    timeOut: 'Out Punch',
+    employeeCode: 'Employee Code',
+    daysInMonth: 'Days in Month',
+    presentDays: 'Present Days',
     shift: 'Shift',
-    timeIn: 'Time In',
-    timeOut: 'Time Out',
     status: 'Status',
-    workedHours: 'Worked Hours',
     requiredHours: 'Required Hours',
     late: 'Lateness Info',
     location: 'Locations',
@@ -19,8 +23,10 @@ const COLUMN_TOGGLE_LABELS = {
 };
 const REPORT_TYPE_COLUMN_KEYS = {
     matrix_daily: ['timeIn', 'timeOut', 'status', 'workedHours', 'late'],
-    matrix_weekly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
-    matrix_monthly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
+    matrix_weekly: ['position', 'workedHours', 'timeIn', 'timeOut', 'employeeCode', 'daysInMonth', 'presentDays'],
+    matrix_monthly: ['position', 'workedHours', 'timeIn', 'timeOut', 'employeeCode', 'daysInMonth', 'presentDays'],
+    attendance_matrix_weekly: ['position', 'workedHours', 'timeIn', 'timeOut', 'employeeCode', 'daysInMonth', 'presentDays'],
+    attendance_matrix_monthly: ['position', 'workedHours', 'timeIn', 'timeOut', 'employeeCode', 'daysInMonth', 'presentDays'],
     attendance_detailed: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'location'],
     attendance_summary: ['workedHours', 'requiredHours', 'late', 'attendanceDays']
 };

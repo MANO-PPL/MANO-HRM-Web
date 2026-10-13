@@ -1045,22 +1045,34 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const [y, m] = (month || startDate).split('-').map(Number);
         const baseDate = new Date(y, (m || 1) - 1, 1);
         const monthShort = baseDate.toLocaleDateString('en-US', { month: 'short' });
-        const yearShort = String(y).slice(-2);
         const sheetName = `${monthShort} ${yearShort} Attn`;
-
         worksheet.name = sheetName;
-        worksheet.views = [{ showGridLines: true, state: 'frozen', xSplit: 7, ySplit: 5 }];
+
+        const showPosition = colsObj.position !== false && colsObj.positionName !== false;
+        const showWorkHour = colsObj.workedHours !== false && colsObj.workHour !== false;
+        const showIn = colsObj.timeIn !== false && colsObj.inPunch !== false && colsObj.in !== false;
+        const showOut = colsObj.timeOut !== false && colsObj.outPunch !== false && colsObj.out !== false;
+        const showEmpCode = colsObj.employeeCode !== false && colsObj.empCode !== false;
+        const showDaysInMonth = colsObj.daysInMonth !== false;
+        const showPresentDays = colsObj.presentDays !== false;
+
+        const dynamicCols = [];
+        if (showEmpCode) dynamicCols.push({ key: 'employeeCode', text: 'Employee Code', width: 6.5 });
+        if (showDaysInMonth) dynamicCols.push({ key: 'daysInMonth', text: 'Days in Month', width: 5.5 });
+        if (showPresentDays) dynamicCols.push({ key: 'presentDays', text: 'Present Days', width: 6.5 });
+
+        const staticColCount = 3 + dynamicCols.length;
+        worksheet.views = [{ showGridLines: true, state: 'frozen', xSplit: staticColCount, ySplit: 5 }];
 
         // Set column widths
         worksheet.getColumn(1).width = 6;   // SR No.
         worksheet.getColumn(2).width = 24;  // Name
-        worksheet.getColumn(3).width = 18;  // Position
-        worksheet.getColumn(4).width = 6.5; // Employee Code (Vertical)
-        worksheet.getColumn(5).width = 5.5; // Grade (Vertical)
-        worksheet.getColumn(6).width = 5.5; // Days in Month (Vertical)
-        worksheet.getColumn(7).width = 6.5; // Present Days (Vertical)
+        worksheet.getColumn(3).width = 18;  // Attributes (renamed from Position)
+        dynamicCols.forEach((dc, i) => {
+            worksheet.getColumn(4 + i).width = dc.width;
+        });
         musterData.dateHeaders.forEach((_, idx) => {
-            worksheet.getColumn(8 + idx).width = 4.8; // Dates (Vertical)
+            worksheet.getColumn(staticColCount + 1 + idx).width = 4.8; // Dates (Vertical)
         });
 
         // Row 1: Title
@@ -1113,7 +1125,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         srCell.border = leftHBorder;
         worksheet.getCell(5, 1).border = leftHBorder;
 
-        // Row 5: Name and Position
+        // Row 5: Name and Attributes
         worksheet.getRow(5).height = 58;
         const nameHCell = worksheet.getCell(5, 2);
         nameHCell.value = 'Name';
@@ -1122,29 +1134,24 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         nameHCell.border = leftHBorder;
 
         const posHCell = worksheet.getCell(5, 3);
-        posHCell.value = 'Position';
+        posHCell.value = 'Attributes';
         posHCell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF000000' } };
         posHCell.alignment = { vertical: 'middle', horizontal: 'center' };
-        posHCell.border = { ...leftHBorder, right: { style: 'medium', color: { argb: 'FF64748B' } } };
+        posHCell.border = { ...leftHBorder, right: { style: staticColCount === 3 ? 'medium' : 'thin', color: { argb: 'FF64748B' } } };
 
-        // Col 4-7: Employee Code, Grade, Days in Month, Present Days (Merged 4-5, Vertical textRotation: 90)
-        const verticalHeaders = [
-            { col: 4, text: 'Employee Code' },
-            { col: 5, text: 'Grade' },
-            { col: 6, text: 'Days in Month' },
-            { col: 7, text: 'Present Days' }
-        ];
-        verticalHeaders.forEach(({ col, text }) => {
+        // Dynamic vertical headers (Employee Code, Days in Month, Present Days)
+        dynamicCols.forEach((dc, i) => {
+            const col = 4 + i;
             worksheet.mergeCells(4, col, 5, col);
             const cell = worksheet.getCell(4, col);
-            cell.value = text;
+            cell.value = dc.text;
             cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: 'FF000000' } };
             cell.alignment = { vertical: 'middle', horizontal: 'center', textRotation: 90 };
             const vBorder = {
                 top: { style: 'thin', color: { argb: 'FF64748B' } },
                 bottom: { style: 'medium', color: { argb: 'FF64748B' } },
                 left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                right: { style: 'thin', color: col === 7 ? { argb: 'FF64748B' } : { argb: 'FF94A3B8' } }
+                right: { style: 'thin', color: col === staticColCount ? { argb: 'FF64748B' } : { argb: 'FF94A3B8' } }
             };
             cell.border = vBorder;
             worksheet.getCell(5, col).border = vBorder;
@@ -1152,7 +1159,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         // Day of week in row 4 - Vertical
         musterData.dateHeaders.forEach((dh, dIdx) => {
-            const cell = worksheet.getCell(4, 8 + dIdx);
+            const cell = worksheet.getCell(4, staticColCount + 1 + dIdx);
             cell.value = dh.dayOfWeek;
             cell.font = { name: 'Segoe UI', size: 9, bold: true, color: dh.isHighlight ? { argb: 'FF713F12' } : { argb: 'FF000000' } };
             cell.alignment = { vertical: 'middle', horizontal: 'center', textRotation: 90 };
@@ -1169,7 +1176,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         // Row 5: Date strings - Vertical
         musterData.dateHeaders.forEach((dh, dIdx) => {
-            const cell = worksheet.getCell(5, 8 + dIdx);
+            const cell = worksheet.getCell(5, staticColCount + 1 + dIdx);
             cell.value = dh.dateFormatted;
             cell.font = { name: 'Segoe UI', size: 9, bold: true, color: dh.isHighlight ? { argb: 'FF713F12' } : { argb: 'FF000000' } };
             cell.alignment = { vertical: 'middle', horizontal: 'center', textRotation: 90 };
@@ -1184,174 +1191,111 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             }
         });
 
-        // Row 6 onwards: Employees (4 rows per employee)
-        musterData.employees.forEach((emp, eIdx) => {
-            const startRow = 6 + (eIdx * 4);
+        // Row 6 onwards: Employees (dynamic sub-rows per employee)
+        let currentRow = 6;
+        musterData.employees.forEach((emp) => {
+            const startRow = currentRow;
+            const subRowTypes = [
+                { type: 'status', label: showPosition ? (emp.position || 'Status') : 'Status', rowData: emp.statusRow, isStatus: true },
+                ...(showWorkHour ? [{ type: 'workHour', label: 'Work Hour', rowData: emp.workHourRow }] : []),
+                ...(showIn ? [{ type: 'in', label: 'In', rowData: emp.inRow }] : []),
+                ...(showOut ? [{ type: 'out', label: 'Out', rowData: emp.outRow }] : [])
+            ];
+            const rowSpanCount = subRowTypes.length;
 
-            // Row 1: Units / Status
-            worksheet.getRow(startRow).height = 20;
-            worksheet.getCell(startRow, 1).value = emp.srNo;
-            worksheet.getCell(startRow, 2).value = emp.name;
-            worksheet.getCell(startRow, 3).value = emp.position;
-            worksheet.getCell(startRow, 4).value = emp.employeeCode;
-            worksheet.getCell(startRow, 5).value = emp.grade;
-            worksheet.getCell(startRow, 6).value = emp.daysInMonth;
-            worksheet.getCell(startRow, 7).value = parseFloat(emp.presentDays);
-            worksheet.getCell(startRow, 7).numFmt = '0.00';
+            subRowTypes.forEach((sr, rIdx) => {
+                const rowNum = startRow + rIdx;
+                worksheet.getRow(rowNum).height = rIdx === 0 ? 20 : 18;
 
-            // Common font/alignment for left columns
-            [1, 4, 5, 6, 7].forEach(c => {
-                const cell = worksheet.getCell(startRow, c);
-                cell.font = { name: 'Segoe UI', size: 9, bold: c === 7, color: { argb: 'FF1E293B' } };
-                cell.alignment = { vertical: 'middle', horizontal: 'center' };
-            });
-            worksheet.getCell(startRow, 2).font = { name: 'Segoe UI', size: 9, bold: false, color: { argb: 'FF0F172A' } };
-            worksheet.getCell(startRow, 2).alignment = { vertical: 'middle', horizontal: 'left' };
-            worksheet.getCell(startRow, 3).font = { name: 'Segoe UI', size: 9, bold: false, color: { argb: 'FF475569' } };
-            worksheet.getCell(startRow, 3).alignment = { vertical: 'middle', horizontal: 'left' };
+                if (rIdx === 0) {
+                    worksheet.getCell(rowNum, 1).value = emp.srNo;
+                    worksheet.getCell(rowNum, 2).value = emp.name;
+                    worksheet.getCell(rowNum, 3).value = sr.label;
 
-            // Units across dates
-            emp.statusRow.forEach((val, dIdx) => {
-                const cell = worksheet.getCell(startRow, 8 + dIdx);
-                const dh = musterData.dateHeaders[dIdx];
-                cell.value = val === "" ? "" : isNaN(Number(val)) ? val : parseFloat(val);
-                if (typeof cell.value === 'number') {
-                    cell.numFmt = '0.0';
+                    dynamicCols.forEach((dc, i) => {
+                        const cell = worksheet.getCell(rowNum, 4 + i);
+                        if (dc.key === 'employeeCode') cell.value = emp.employeeCode;
+                        if (dc.key === 'daysInMonth') cell.value = emp.daysInMonth;
+                        if (dc.key === 'presentDays') {
+                            cell.value = parseFloat(emp.presentDays);
+                            cell.numFmt = '0.00';
+                        }
+                    });
+
+                    // Common formatting
+                    const centerCols = [1];
+                    dynamicCols.forEach((_, i) => centerCols.push(4 + i));
+                    centerCols.forEach(c => {
+                        const cell = worksheet.getCell(rowNum, c);
+                        cell.font = { name: 'Segoe UI', size: 9, bold: c === staticColCount && showPresentDays, color: { argb: 'FF1E293B' } };
+                        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                    });
+                    worksheet.getCell(rowNum, 2).font = { name: 'Segoe UI', size: 9, bold: false, color: { argb: 'FF0F172A' } };
+                    worksheet.getCell(rowNum, 2).alignment = { vertical: 'middle', horizontal: 'left' };
+                    worksheet.getCell(rowNum, 3).font = { name: 'Segoe UI', size: 9, bold: false, color: { argb: 'FF475569' } };
+                    worksheet.getCell(rowNum, 3).alignment = { vertical: 'middle', horizontal: 'left' };
+
+                    if (rowSpanCount > 1) {
+                        worksheet.mergeCells(startRow, 1, startRow + rowSpanCount - 1, 1);
+                        worksheet.mergeCells(startRow, 2, startRow + rowSpanCount - 1, 2);
+                        dynamicCols.forEach((_, i) => {
+                            worksheet.mergeCells(startRow, 4 + i, startRow + rowSpanCount - 1, 4 + i);
+                        });
+                    }
+                } else {
+                    const labelCell = worksheet.getCell(rowNum, 3);
+                    labelCell.value = sr.label;
+                    labelCell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF334155' } };
+                    labelCell.alignment = { vertical: 'middle', horizontal: 'left' };
+                    labelCell.border = {
+                        top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+                        bottom: { style: rIdx === rowSpanCount - 1 ? 'medium' : 'thin', color: { argb: rIdx === rowSpanCount - 1 ? 'FF64748B' : 'FF94A3B8' } },
+                        left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+                        right: { style: staticColCount === 3 ? 'medium' : 'thin', color: { argb: 'FF64748B' } }
+                    };
                 }
-                cell.font = { name: 'Segoe UI', size: 9, bold: val === "0.0", color: { argb: 'FF1E293B' } };
-                cell.alignment = { vertical: 'middle', horizontal: 'center' };
-                cell.border = {
-                    top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    bottom: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    right: { style: 'thin', color: { argb: 'FF94A3B8' } }
-                };
 
-                if (val === "0.0") {
-                    // Absent: Soft subtle pastel red
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-                    cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF991B1B' } };
-                } else if (dh.isHighlight) {
-                    // Sunday / Holiday: Soft subtle pastel butter yellow
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
-                    cell.font = { name: 'Segoe UI', size: 9, bold: false, color: { argb: 'FF713F12' } };
-                }
-            });
+                // Date cells
+                sr.rowData.forEach((val, dIdx) => {
+                    const col = staticColCount + 1 + dIdx;
+                    const cell = worksheet.getCell(rowNum, col);
+                    const dh = musterData.dateHeaders[dIdx];
+                    cell.value = val === "" ? "" : isNaN(Number(val)) ? val : parseFloat(val);
+                    if (typeof cell.value === 'number') {
+                        cell.numFmt = '0.0';
+                    }
+                    cell.font = { name: 'Segoe UI', size: sr.isStatus ? 9 : 8.5, bold: val === "0.0", color: { argb: 'FF1E293B' } };
+                    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                    cell.border = {
+                        top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+                        bottom: { style: rIdx === rowSpanCount - 1 ? 'medium' : 'thin', color: { argb: rIdx === rowSpanCount - 1 ? 'FF64748B' : 'FF94A3B8' } },
+                        left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+                        right: { style: 'thin', color: { argb: 'FF94A3B8' } }
+                    };
 
-            // Merge left columns vertically (SR No., Name, Code, Grade, Days, Present Days)
-            worksheet.mergeCells(startRow, 1, startRow + 3, 1);
-            worksheet.mergeCells(startRow, 2, startRow + 3, 2);
-            worksheet.mergeCells(startRow, 4, startRow + 3, 4);
-            worksheet.mergeCells(startRow, 5, startRow + 3, 5);
-            worksheet.mergeCells(startRow, 6, startRow + 3, 6);
-            worksheet.mergeCells(startRow, 7, startRow + 3, 7);
-
-            // Row 2: Work Hour
-            worksheet.getRow(startRow + 1).height = 18;
-            const whLabelCell = worksheet.getCell(startRow + 1, 3);
-            whLabelCell.value = 'Work Hour';
-            whLabelCell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF334155' } };
-            whLabelCell.alignment = { vertical: 'middle', horizontal: 'left' };
-            whLabelCell.border = {
-                top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                bottom: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                right: { style: 'medium', color: { argb: 'FF64748B' } }
-            };
-
-            emp.workHourRow.forEach((val, dIdx) => {
-                const cell = worksheet.getCell(startRow + 1, 8 + dIdx);
-                const dh = musterData.dateHeaders[dIdx];
-                cell.value = val === "" ? "" : isNaN(Number(val)) ? val : parseFloat(val);
-                if (typeof cell.value === 'number') {
-                    cell.numFmt = '0.0';
-                }
-                cell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF334155' } };
-                cell.alignment = { vertical: 'middle', horizontal: 'center' };
-                cell.border = {
-                    top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    bottom: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    right: { style: 'thin', color: { argb: 'FF94A3B8' } }
-                };
-                if (dh.isHighlight) {
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
-                    cell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF713F12' } };
-                }
+                    if (sr.isStatus && val === "0.0") {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                        cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF991B1B' } };
+                    } else if (dh.isHighlight) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
+                        cell.font = { name: 'Segoe UI', size: sr.isStatus ? 9 : 8.5, bold: false, color: { argb: 'FF713F12' } };
+                    }
+                });
             });
 
-            // Row 3: In
-            worksheet.getRow(startRow + 2).height = 18;
-            const inLabelCell = worksheet.getCell(startRow + 2, 3);
-            inLabelCell.value = 'In';
-            inLabelCell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF334155' } };
-            inLabelCell.alignment = { vertical: 'middle', horizontal: 'left' };
-            inLabelCell.border = {
-                top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                bottom: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                right: { style: 'medium', color: { argb: 'FF64748B' } }
-            };
-
-            emp.inRow.forEach((val, dIdx) => {
-                const cell = worksheet.getCell(startRow + 2, 8 + dIdx);
-                const dh = musterData.dateHeaders[dIdx];
-                cell.value = val;
-                cell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF334155' } };
-                cell.alignment = { vertical: 'middle', horizontal: 'center' };
-                cell.border = {
-                    top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    bottom: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    right: { style: 'thin', color: { argb: 'FF94A3B8' } }
-                };
-                if (dh.isHighlight) {
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
-                    cell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF713F12' } };
-                }
-            });
-
-            // Row 4: Out
-            worksheet.getRow(startRow + 3).height = 18;
-            const outLabelCell = worksheet.getCell(startRow + 3, 3);
-            outLabelCell.value = 'Out';
-            outLabelCell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF334155' } };
-            outLabelCell.alignment = { vertical: 'middle', horizontal: 'left' };
-            outLabelCell.border = {
-                top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                bottom: { style: 'medium', color: { argb: 'FF64748B' } },
-                left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                right: { style: 'medium', color: { argb: 'FF64748B' } }
-            };
-
-            emp.outRow.forEach((val, dIdx) => {
-                const cell = worksheet.getCell(startRow + 3, 8 + dIdx);
-                const dh = musterData.dateHeaders[dIdx];
-                cell.value = val;
-                cell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF334155' } };
-                cell.alignment = { vertical: 'middle', horizontal: 'center' };
-                cell.border = {
-                    top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    bottom: { style: 'medium', color: { argb: 'FF64748B' } },
-                    left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    right: { style: 'thin', color: { argb: 'FF94A3B8' } }
-                };
-                if (dh.isHighlight) {
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
-                    cell.font = { name: 'Segoe UI', size: 8.5, bold: false, color: { argb: 'FF713F12' } };
-                }
-            });
-
-            // Border for bottom of merged cells in row 7+3
-            for (let c = 1; c <= 7; c++) {
-                const bCell = worksheet.getCell(startRow + 3, c);
+            // Border for bottom of merged cells in row
+            const endRow = startRow + rowSpanCount - 1;
+            for (let c = 1; c <= staticColCount; c++) {
+                const bCell = worksheet.getCell(endRow, c);
                 bCell.border = {
                     top: { style: 'thin', color: { argb: 'FF94A3B8' } },
                     bottom: { style: 'medium', color: { argb: 'FF64748B' } },
                     left: { style: 'thin', color: { argb: 'FF94A3B8' } },
-                    right: { style: 'thin', color: { argb: c === 3 || c === 7 ? 'FF64748B' : 'FF94A3B8' } }
+                    right: { style: 'thin', color: c === staticColCount ? { argb: 'FF64748B' } : { argb: 'FF94A3B8' } }
                 };
             }
+
+            currentRow += rowSpanCount;
         });
     } else if (type === "attendance_detailed") {
         const cols = [
