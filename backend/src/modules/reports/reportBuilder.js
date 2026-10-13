@@ -1045,6 +1045,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const [y, m] = (month || startDate).split('-').map(Number);
         const baseDate = new Date(y, (m || 1) - 1, 1);
         const monthShort = baseDate.toLocaleDateString('en-US', { month: 'short' });
+        const yearShort = String(y).slice(-2);
         const sheetName = `${monthShort} ${yearShort} Attn`;
         worksheet.name = sheetName;
 
