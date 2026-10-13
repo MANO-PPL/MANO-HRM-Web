@@ -81,11 +81,15 @@ const Reports = () => {
     const [tableCustomStartDate, setTableCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableCustomEndDate, setTableCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableExportColumns, setTableExportColumns] = useState({
-        shift: true,
+        position: true,
+        workedHours: true,
         timeIn: true,
         timeOut: true,
+        employeeCode: true,
+        daysInMonth: true,
+        presentDays: true,
+        shift: true,
         status: true,
-        workedHours: true,
         requiredHours: false,
         late: false,
         location: false,
@@ -528,6 +532,9 @@ const Reports = () => {
     ]);
 
     // Build a stable cache key from activeFilters primitives
+    // NOTE: exportColumnsKey is intentionally excluded here because column visibility in preview
+    // is a client-side presentational filter. This ensures changing column checkboxes NEVER triggers
+    // unnecessary database re-queries, network latency, or repeated component unmounting/re-rendering.
     const cacheKey = useMemo(() => {
         return JSON.stringify({
             selectedMonth: activeFilters.selectedMonth,
@@ -539,8 +546,7 @@ const Reports = () => {
             selectedShiftId: activeFilters.selectedShiftId,
             useCustomRange: activeFilters.useCustomRange,
             customStartDate: activeFilters.customStartDate,
-            customEndDate: activeFilters.customEndDate,
-            exportColumnsKey: activeFilters.exportColumnsKey
+            customEndDate: activeFilters.customEndDate
         });
     }, [
         activeFilters.selectedMonth,
@@ -552,8 +558,7 @@ const Reports = () => {
         activeFilters.selectedShiftId,
         activeFilters.useCustomRange,
         activeFilters.customStartDate,
-        activeFilters.customEndDate,
-        activeFilters.exportColumnsKey
+        activeFilters.customEndDate
     ]);
 
     const activeFiltersRef = useRef(activeFilters);
@@ -571,7 +576,7 @@ const Reports = () => {
                 currentFilters.selectedEmployeeId,
                 currentFilters.qStart,
                 currentFilters.qEnd,
-                currentFilters.exportColumnsKey,
+                '', // Fetch full dataset so column toggling is 100% instant in the client
                 currentFilters.selectedDeptId,
                 currentFilters.selectedDesgId,
                 currentFilters.selectedShiftId
@@ -1178,6 +1183,7 @@ const Reports = () => {
                         loadingPreview={loadingPreview}
                         reportsSummary={reportsSummary}
                         cacheHit={cacheHit}
+                        columnsConfig={tableExportColumns}
                     />
                 )}
 

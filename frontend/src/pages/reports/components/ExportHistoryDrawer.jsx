@@ -38,7 +38,10 @@ const ExportHistoryDrawer = ({
                         className="fixed right-0 top-0 bottom-0 w-full sm:w-[420px] bg-white dark:bg-[#161b22] border-l border-slate-200 dark:border-[#30363d] shadow-2xl z-[101] flex flex-col"
                     >
                         {/* Header */}
-                        <div className="p-4 border-b border-slate-200 dark:border-[#30363d] bg-slate-50/50 dark:bg-github-dark-subtle/10 flex items-center justify-between">
+                        <div 
+                            className="p-4 border-b border-slate-200 dark:border-[#30363d] bg-slate-50/50 dark:bg-github-dark-subtle/10 flex items-center justify-between"
+                            style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
+                        >
                             <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-xs uppercase tracking-wider">
                                 <DownloadCloud className="text-slate-400" size={16} />
                                 Export History
@@ -53,7 +56,10 @@ const ExportHistoryDrawer = ({
                         </div>
 
                         {/* Body */}
-                        <div className="p-4 overflow-y-auto flex-1 no-scrollbar space-y-3 bg-[#f6f8fa] dark:bg-[#0d1117] min-h-[300px]">
+                        <div 
+                            className="p-4 overflow-y-auto flex-1 no-scrollbar space-y-3 bg-[#f6f8fa] dark:bg-[#0d1117] min-h-[300px]"
+                            style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+                        >
                             {exportHistory.length > 0 ? (
                                 exportHistory.map((file) => (
                                     <div

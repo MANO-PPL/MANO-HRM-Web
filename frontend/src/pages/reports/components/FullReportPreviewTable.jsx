@@ -13,7 +13,8 @@ const FullReportPreviewTable = ({
     activeFilters,
     previewData,
     loadingPreview,
-    cacheHit
+    cacheHit,
+    columnsConfig
 }) => {
     const [sortColumn, setSortColumn] = useState(null);
     const [sortDirection, setSortDirection] = useState('asc');
@@ -59,6 +60,33 @@ const FullReportPreviewTable = ({
             return row.some(cell => (cell || '').toString().toLowerCase().includes(q));
         });
     }, [sortedRows, searchQuery]);
+
+    // Fast client-side visible column indices based on columnsConfig
+    const visibleColIndices = useMemo(() => {
+        if (!previewData.columns || !columnsConfig) {
+            return (previewData.columns || []).map((_, i) => i);
+        }
+        return previewData.columns
+            .map((col, idx) => {
+                const colStr = (col || '').toString().toLowerCase();
+                let key = null;
+                if (colStr.includes('time in')) key = 'timeIn';
+                else if (colStr.includes('time out')) key = 'timeOut';
+                else if (colStr.includes('work hr') || colStr.includes('shortfall') || colStr.includes('excess')) key = 'workedHours';
+                else if (colStr === 'status') key = 'status';
+                else if (colStr.includes('late')) key = 'late';
+                else if (colStr.includes('shift')) key = 'shift';
+                else if (colStr.includes('location')) key = 'location';
+                else if (colStr.includes('req hr')) key = 'requiredHours';
+                else if (['present', 'absent', 'half day', 'on leave'].includes(colStr) || colStr.includes('holiday')) key = 'attendanceDays';
+
+                if (key && columnsConfig[key] === false) {
+                    return -1;
+                }
+                return idx;
+            })
+            .filter(idx => idx !== -1);
+    }, [previewData.columns, columnsConfig]);
 
     const empCounts = useMemo(() => {
         const users = previewData.users || [];
@@ -299,6 +327,7 @@ const FullReportPreviewTable = ({
                     <MusterRollPreviewTable
                         musterRoll={previewData.musterRoll}
                         searchQuery={searchQuery}
+                        columnsConfig={columnsConfig}
                     />
                 ) : (displayRows && displayRows.length > 0) ? (
                     /* Spreadsheet View: Premium Excel-replica table directly rendered */
@@ -349,7 +378,8 @@ const FullReportPreviewTable = ({
                                             {/* Row # column */}
                                             <th style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', width: '36px', minWidth: '36px' }}
                                                 className="px-2 py-3 text-center text-[9px] font-semibold uppercase">#</th>
-                                            {previewData.columns.map((col, idx) => {
+                                            {visibleColIndices.map((idx) => {
+                                                const col = previewData.columns[idx];
                                                 const alignment = getAlignmentClass(col);
                                                 const isSorted = sortColumn === col;
                                                 return (
@@ -410,7 +440,8 @@ const FullReportPreviewTable = ({
                                                 >
                                                     {isTotalsRow ? '∑' : rIdx + 1}
                                                 </td>
-                                                {row.map((cell, cIdx) => {
+                                                {visibleColIndices.map((cIdx) => {
+                                                    const cell = row[cIdx];
                                                     const colHeader = previewData.columns[cIdx]?.toString() || '';
                                                     const cellStyle = getCellStyle(cell, colHeader, isTotalsRow, isEven, rIdx);
                                                     const alignment = getAlignmentClass(colHeader);
@@ -449,4 +480,4 @@ const FullReportPreviewTable = ({
     );
 };
 
-export default FullReportPreviewTable;
+export default React.memo(FullReportPreviewTable);

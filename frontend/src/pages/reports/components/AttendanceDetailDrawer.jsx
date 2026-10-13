@@ -37,7 +37,10 @@ const AttendanceDetailDrawer = ({
                         className="fixed right-0 top-0 bottom-0 w-full max-w-[480px] z-[201] bg-white dark:bg-dark-card border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col overflow-hidden"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 shrink-0">
+                        <div 
+                            className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 shrink-0"
+                            style={{ paddingTop: 'calc(1.25rem + env(safe-area-inset-top, 0px))' }}
+                        >
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
                                     <Clock size={20} />
@@ -54,7 +57,10 @@ const AttendanceDetailDrawer = ({
                         </div>
 
                         {/* Body */}
-                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+                        <div 
+                            className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6"
+                            style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}
+                        >
 
                             {/* Profile Card - Avatar + Name + Date + Status */}
                             <div className="flex flex-col items-center gap-4 text-center">
