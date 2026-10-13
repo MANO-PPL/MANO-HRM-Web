@@ -66,7 +66,7 @@ const DocumentsTab = ({
                             className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
                                 bulkSelectMode
                                     ? "bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-950/20 dark:border-indigo-900"
-                                    : "bg-white border-slate-200 text-slate-650 hover:bg-slate-50 dark:bg-github-dark-subtle dark:border-github-dark-border dark:text-slate-350"
+                                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-github-dark-subtle dark:border-github-dark-border dark:text-slate-400"
                             }`}
                         >
                             <span>{bulkSelectMode ? "Exit Select" : "Select & Download"}</span>

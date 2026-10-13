@@ -1,5 +1,7 @@
-import React from 'react';
-import EmployeeFormContent from '../../../components/employees/EmployeeFormContent';
+import React, { useState } from 'react';
+import { Maximize2 } from 'lucide-react';
+import EmployeeFormContent from '../../../../components/employees/EmployeeFormContent';
+import ProfilePictureModal from '../../../../components/modals/ProfilePictureModal';
 
 const ProfileTab = ({
     selectedEmployee,
@@ -10,8 +12,11 @@ const ProfileTab = ({
     checklistTemplates = [],
     documentTemplates = [],
     handleChecklistTemplateChange,
-    handleDocumentTemplateChange
+    handleDocumentTemplateChange,
+    onOpenAvatar
 }) => {
+    const [localLightboxData, setLocalLightboxData] = useState(null);
+
     if (!selectedEmployee) return null;
 
     if (editMode) {
@@ -29,17 +34,47 @@ const ProfileTab = ({
 
     const profile = selectedEmployee.profile || {};
 
+    const handleAvatarClick = () => {
+        if (!selectedEmployee.profile_image_url) return;
+        const data = {
+            imageUrl: `${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`,
+            name: selectedEmployee.name,
+            role: selectedEmployee.designation,
+            department: selectedEmployee.department,
+            userCode: selectedEmployee.user_code,
+            email: selectedEmployee.email,
+            phone: selectedEmployee.phone,
+            status: selectedEmployee.status
+        };
+        if (onOpenAvatar) {
+            onOpenAvatar(data);
+        } else {
+            setLocalLightboxData(data);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Employee Avatar & Basic Info */}
             <div className="flex flex-col items-center gap-3 text-center border-b border-slate-100 dark:border-github-dark-border pb-5">
-                <div className="relative w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-3xl overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-sm">
+                <div
+                    onClick={handleAvatarClick}
+                    title={selectedEmployee.profile_image_url ? `View ${selectedEmployee.name}'s profile photo` : selectedEmployee.name}
+                    className={`relative group/profile-avatar w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-3xl overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-sm transition-all ${
+                        selectedEmployee.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-4 hover:ring-indigo-500/30' : ''
+                    }`}
+                >
                     {selectedEmployee.profile_image_url ? (
-                        <img
-                            src={`${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`}
-                            alt={selectedEmployee.name}
-                            className="w-full h-full object-cover"
-                        />
+                        <>
+                            <img
+                                src={`${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`}
+                                alt={selectedEmployee.name}
+                                className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/profile-avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                <Maximize2 size={24} />
+                            </div>
+                        </>
                     ) : (
                         selectedEmployee.name.charAt(0)
                     )}
@@ -143,6 +178,13 @@ const ProfileTab = ({
                     </div>
                 </div>
             </div>
+
+            {/* Profile Picture Modal */}
+            <ProfilePictureModal
+                isOpen={!!localLightboxData}
+                onClose={() => setLocalLightboxData(null)}
+                {...localLightboxData}
+            />
         </div>
     );
 };

@@ -74,7 +74,7 @@ const AiVerificationTab = ({
                 </div>
 
                 <div className={`p-4 border rounded-xl flex flex-col items-center justify-center text-center ${scoreColor}`}>
-                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-450 dark:text-slate-500">Compliance Score</span>
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-slate-500">Compliance Score</span>
                     <div className="text-4xl font-extrabold my-2">{score}%</div>
                     <div className="w-full bg-slate-200/50 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mb-2">
                         <div className={`h-full ${scoreBarColor}`} style={{ width: `${score}%` }}></div>
@@ -123,7 +123,7 @@ const AiVerificationTab = ({
                             ))}
                         </ul>
                     ) : (
-                        <div className="flex items-center gap-1.5 text-emerald-550 text-xs font-medium">
+                        <div className="flex items-center gap-1.5 text-emerald-500 text-xs font-medium">
                             <Check size={14} />
                             No expired records flagged.
                         </div>
@@ -135,7 +135,7 @@ const AiVerificationTab = ({
             <div className="border border-slate-200 dark:border-github-dark-border rounded-xl bg-white dark:bg-[#161b22]/30 overflow-hidden">
                 <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
                     <div>
-                        <h5 className="font-bold text-xs text-slate-750 dark:text-github-dark-text">OCR Extracted Metadata</h5>
+                        <h5 className="font-bold text-xs text-slate-700 dark:text-github-dark-text">OCR Extracted Metadata</h5>
                         <p className="text-[10px] text-slate-400 mt-0.5">Explore key-value data extracted by AI models from the uploaded files.</p>
                     </div>
 
@@ -151,8 +151,8 @@ const AiVerificationTab = ({
                                         onClick={() => setActiveOcrDoc(key)}
                                         className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
                                             isActive
-                                                ? 'bg-white dark:bg-[#161b22] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200/50 dark:border-github-dark-border/50'
-                                                : 'text-slate-450 hover:text-slate-700 dark:hover:text-github-dark-text'
+                                                ? 'bg-white dark:bg-[#161b22] text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/50 dark:border-github-dark-border/50'
+                                                : 'text-slate-400 hover:text-slate-700 dark:hover:text-github-dark-text'
                                         }`}
                                     >
                                         {label}
@@ -183,7 +183,7 @@ const AiVerificationTab = ({
                                     return (
                                         <div key={index} className="p-2.5 bg-slate-50 dark:bg-github-dark-subtle/10 rounded-lg border border-slate-200/20 dark:border-github-dark-border/30 flex flex-col gap-1.5 hover:shadow-sm transition-all duration-150">
                                             <div className="flex justify-between items-center text-[11px]">
-                                                <span className="font-semibold text-slate-450 dark:text-slate-500 text-[10px]">{item.field}</span>
+                                                <span className="font-semibold text-slate-400 dark:text-slate-500 text-[10px]">{item.field}</span>
                                                 <span className="font-bold text-slate-700 dark:text-github-dark-text select-all">{item.value}</span>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -216,7 +216,7 @@ const AiVerificationTab = ({
                                     <div className="grid grid-cols-2 gap-3">
                                         {/* 1. Hologram Test */}
                                         <div className="p-3 border border-slate-200/40 dark:border-github-dark-border rounded-xl flex flex-col justify-between gap-2 bg-slate-50/50 dark:bg-[#161b22]/10 hover:shadow-sm transition-all">
-                                            <span className="text-[10px] font-semibold text-slate-450 dark:text-slate-500">Hologram Verification</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">Hologram Verification</span>
                                             <div className="flex items-center gap-1.5">
                                                 {checks.hologram === 'N/A' ? (
                                                     <span className="px-2 py-0.5 bg-slate-100 dark:bg-github-dark-subtle text-slate-400 text-[10px] font-bold rounded-full">N/A</span>
@@ -230,7 +230,7 @@ const AiVerificationTab = ({
 
                                         {/* 2. Blur / Legibility */}
                                         <div className="p-3 border border-slate-200/40 dark:border-github-dark-border rounded-xl flex flex-col justify-between gap-2 bg-slate-50/50 dark:bg-[#161b22]/10 hover:shadow-sm transition-all">
-                                            <span className="text-[10px] font-semibold text-slate-450 dark:text-slate-500">Blur legibility test</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">Blur legibility test</span>
                                             <div className="flex items-center gap-1.5">
                                                 {blurPassed ? (
                                                     <span className="px-2 py-0.5 bg-emerald-500/10 dark:bg-emerald-950/20 text-emerald-500 text-[10px] font-bold rounded-full flex items-center gap-1">
@@ -246,24 +246,24 @@ const AiVerificationTab = ({
 
                                         {/* 3. EXIF Metadata Check */}
                                         <div className="p-3 border border-slate-200/40 dark:border-github-dark-border rounded-xl flex flex-col justify-between gap-2 bg-slate-50/50 dark:bg-[#161b22]/10 hover:shadow-sm transition-all">
-                                            <span className="text-[10px] font-semibold text-slate-450 dark:text-slate-500">Metadata Alteration</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">Metadata Alteration</span>
                                             <div className="flex items-center gap-1.5">
                                                 {metadataPassed ? (
                                                     <span className="px-2 py-0.5 bg-emerald-500/10 dark:bg-emerald-950/20 text-emerald-500 text-[10px] font-bold rounded-full flex items-center gap-1"><CheckCircle2 size={10} /> No Edits</span>
                                                 ) : (
-                                                    <span className="px-2 py-0.5 bg-amber-500/10 dark:bg-amber-950/20 text-amber-550 text-[10px] font-bold rounded-full flex items-center gap-1"><AlertTriangle size={10} /> Edited EXIF</span>
+                                                    <span className="px-2 py-0.5 bg-amber-500/10 dark:bg-amber-950/20 text-amber-500 text-[10px] font-bold rounded-full flex items-center gap-1"><AlertTriangle size={10} /> Edited EXIF</span>
                                                 )}
                                             </div>
                                         </div>
 
                                         {/* 4. Photoshop manipulation */}
                                         <div className="p-3 border border-slate-200/40 dark:border-github-dark-border rounded-xl flex flex-col justify-between gap-2 bg-slate-50/50 dark:bg-[#161b22]/10 hover:shadow-sm transition-all">
-                                            <span className="text-[10px] font-semibold text-slate-450 dark:text-slate-500">Manipulation / Photoshop</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">Manipulation / Photoshop</span>
                                             <div className="flex items-center gap-1.5">
                                                 {editingPassed ? (
                                                     <span className="px-2 py-0.5 bg-emerald-500/10 dark:bg-emerald-950/20 text-emerald-500 text-[10px] font-bold rounded-full flex items-center gap-1"><CheckCircle2 size={10} /> Authentic</span>
                                                 ) : (
-                                                    <span className="px-2 py-0.5 bg-rose-500/10 dark:bg-rose-950/20 text-rose-550 text-[10px] font-bold rounded-full flex items-center gap-1"><XCircle size={10} /> Tampering</span>
+                                                    <span className="px-2 py-0.5 bg-rose-500/10 dark:bg-rose-950/20 text-rose-500 text-[10px] font-bold rounded-full flex items-center gap-1"><XCircle size={10} /> Tampering</span>
                                                 )}
                                             </div>
                                         </div>
@@ -282,7 +282,7 @@ const AiVerificationTab = ({
             {/* Cross-Document Mismatch Matrix Comparison Grid */}
             <div className="border border-slate-200 dark:border-github-dark-border rounded-xl bg-white dark:bg-[#161b22]/30 overflow-hidden">
                 <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20">
-                    <h5 className="font-bold text-xs text-slate-750 dark:text-github-dark-text">Cross-Document Discrepancy Matrix</h5>
+                    <h5 className="font-bold text-xs text-slate-700 dark:text-github-dark-text">Cross-Document Discrepancy Matrix</h5>
                     <p className="text-[10px] text-slate-400 mt-0.5">Discrepancies identified by comparing fields across different official source documents.</p>
                 </div>
 
@@ -294,15 +294,15 @@ const AiVerificationTab = ({
 
                                     {/* Compare Fields info */}
                                     <div className="flex items-start md:items-center gap-3">
-                                        <span className="px-2.5 py-1 bg-rose-105 dark:bg-rose-950/30 text-rose-600 dark:text-rose-455 rounded text-[10px] font-black uppercase">
+                                        <span className="px-2.5 py-1 bg-rose-100 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded text-[10px] font-black uppercase">
                                             {d.field} Mismatch
                                         </span>
                                         <div className="flex flex-wrap items-center gap-1.5 text-xs">
                                             <span className="font-bold text-slate-500 dark:text-slate-400">{d.sourceA}:</span>
                                             <span className="text-slate-700 dark:text-github-dark-text bg-slate-100 dark:bg-github-dark-subtle px-2 py-0.5 rounded font-mono text-[11px]">{d.valueA}</span>
-                                            <ArrowRight size={12} className="text-slate-450" />
+                                            <ArrowRight size={12} className="text-slate-400" />
                                             <span className="font-bold text-slate-500 dark:text-slate-400">{d.sourceB}:</span>
-                                            <span className="text-rose-650 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2 py-0.5 rounded font-mono text-[11px] font-bold">{d.valueB}</span>
+                                            <span className="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2 py-0.5 rounded font-mono text-[11px] font-bold">{d.valueB}</span>
                                         </div>
                                     </div>
 
@@ -354,7 +354,7 @@ const AiVerificationTab = ({
                                 {/* Inline overriding dialog form */}
                                 {overridingDiscrepancyId === d.id && (
                                     <div className="p-3.5 bg-slate-50 dark:bg-github-dark-subtle/10 border border-slate-200 dark:border-github-dark-border rounded-xl space-y-2 mt-2">
-                                        <label className="block text-[9px] uppercase font-black text-slate-450 dark:text-slate-500">Provide Justification / Reason for Mismatch</label>
+                                        <label className="block text-[9px] uppercase font-black text-slate-400 dark:text-slate-500">Provide Justification / Reason for Mismatch</label>
                                         <textarea
                                             value={overrideReasonText}
                                             onChange={(e) => setOverrideReasonText(e.target.value)}

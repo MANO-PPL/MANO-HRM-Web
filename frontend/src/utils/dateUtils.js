@@ -31,30 +31,49 @@ export const isSameDay = (d1, d2) => {
 export const formatLocalTimeString = (timeVal) => {
     if (!timeVal) return '';
     try {
-        const str = String(timeVal).trim().replace('Z', '');
-        const parts = str.split(/[- :T.]/);
-        if (parts.length >= 5) {
-            let hour = parseInt(parts[3], 10);
-            const minute = String(parts[4]).padStart(2, '0');
+        if (timeVal instanceof Date) {
+            if (isNaN(timeVal.getTime())) return '';
+            let hour = timeVal.getHours();
+            const minute = String(timeVal.getMinutes()).padStart(2, '0');
             const ampm = hour >= 12 ? 'PM' : 'AM';
             hour = hour % 12;
             if (hour === 0) hour = 12;
             const pad = (n) => String(n).padStart(2, '0');
             return `${pad(hour)}:${minute} ${ampm}`;
         }
-        if (parts.length === 2 || parts.length === 3) {
-            let hour = parseInt(parts[0], 10);
-            if (!isNaN(hour)) {
-                const minute = String(parts[1]).padStart(2, '0');
-                const ampm = hour >= 12 ? 'PM' : 'AM';
-                hour = hour % 12;
-                if (hour === 0) hour = 12;
-                const pad = (n) => String(n).padStart(2, '0');
-                return `${pad(hour)}:${minute} ${ampm}`;
-            }
+        const str = String(timeVal).trim().replace('Z', '');
+        const timeOnlyMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (timeOnlyMatch) {
+            let hour = parseInt(timeOnlyMatch[1], 10);
+            const minute = timeOnlyMatch[2];
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            hour = hour % 12;
+            if (hour === 0) hour = 12;
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(hour)}:${minute} ${ampm}`;
+        }
+        const isoMatch = str.match(/T(\d{1,2}):(\d{2})/);
+        if (isoMatch) {
+            let hour = parseInt(isoMatch[1], 10);
+            const minute = isoMatch[2];
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            hour = hour % 12;
+            if (hour === 0) hour = 12;
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(hour)}:${minute} ${ampm}`;
+        }
+        const dateTimeMatch = str.match(/\s(\d{1,2}):(\d{2})/);
+        if (dateTimeMatch) {
+            let hour = parseInt(dateTimeMatch[1], 10);
+            const minute = dateTimeMatch[2];
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            hour = hour % 12;
+            if (hour === 0) hour = 12;
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(hour)}:${minute} ${ampm}`;
         }
         return str;
-    } catch (e) {
+    } catch (_) {
         return String(timeVal);
     }
 };

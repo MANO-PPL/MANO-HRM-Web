@@ -76,7 +76,7 @@ const ChecklistTab = ({
                                 className="flex items-center justify-between p-3 bg-slate-50 dark:bg-github-dark-subtle/10 border border-slate-100 dark:border-github-dark-border rounded-xl cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/20 transition-all select-none group/row"
                             >
                                 <div className="flex items-center gap-3">
-                                    <CheckCircle2 size={18} className={isDone ? "text-emerald-500" : "text-slate-300 dark:text-slate-750"} />
+                                    <CheckCircle2 size={18} className={isDone ? "text-emerald-500" : "text-slate-300 dark:text-slate-600"} />
                                     <span className={`font-semibold text-xs ${isDone ? 'text-slate-400 line-through opacity-70' : 'text-slate-800 dark:text-github-dark-text'}`}>
                                         {item.task_label}
                                     </span>
