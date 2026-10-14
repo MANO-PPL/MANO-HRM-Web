@@ -13,15 +13,27 @@ import api from '../../../services/api';
 import { toast } from 'react-toastify';
 import MinimalSelect from '../../MinimalSelect';
 
-const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
+const DashboardInsights = ({
+    departments = [],
+    allUsers = [],
+    onOpenConfig,
+    filters: propFilters,
+    setFilters: propSetFilters,
+    onStatsUpdate,
+    hideTopControls = false,
+    refreshTrigger = 0
+}) => {
     // --- ENHANCED FILTER STATE ---
-    const [filters, setFilters] = useState({
+    const [internalFilters, setInternalFilters] = useState({
         startDate: new Date(new Date().setDate(new Date().getDate() - 6)).toISOString().split('T')[0], // Last 7 days
         endDate: new Date().toISOString().split('T')[0],
         dept: 'All',
         desg: 'All',
         search: ''
     });
+
+    const filters = propFilters !== undefined ? propFilters : internalFilters;
+    const setFilters = propSetFilters !== undefined ? propSetFilters : setInternalFilters;
 
     const isTrashOrInactiveUser = (u) => {
         const isTrash = u.is_deleted === 1 || u.is_deleted === true || u.isDeleted === true || Boolean(u.deleted_at);
@@ -352,7 +364,7 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
             return `${h}h ${m}m`;
         };
 
-        setStats({
+        const calculatedStats = {
             submissionRate: subRate,
             submittedCount: subCount,
             totalEmployees: dynamicTotalEmp,
@@ -363,7 +375,10 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
             avgTrend: avgTrend,
             avgIdle: formatDuration(avgIdleM), // avgIdleM is already in minutes
             activeDepartment: topDept
-        });
+        };
+
+        setStats(calculatedStats);
+        if (onStatsUpdate) onStatsUpdate(calculatedStats);
 
         // Category Chart
         const catChart = Object.entries(activityHours).map(([name, value], i) => ({
@@ -404,12 +419,12 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
                     userMap[u.userId] = u;
                 });
 
-                if (filters.dept !== 'All') {
+                if (filters.dept && filters.dept !== 'All' && filters.dept !== 'All Departments') {
                     rawData = rawData.filter(a => a.user_dept === filters.dept);
                     prevData = prevData.filter(a => a.user_dept === filters.dept);
                 }
 
-                if (filters.desg && filters.desg !== 'All') {
+                if (filters.desg && filters.desg !== 'All' && filters.desg !== 'All Designations') {
                     rawData = rawData.filter(a => {
                         const u = userMap[a.user_id];
                         return u && u.designation === filters.desg;
@@ -419,10 +434,10 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
                         return u && u.designation === filters.desg;
                     });
                 }
-                if (filters.search.trim()) {
+                if (filters.search && filters.search.trim()) {
                     const q = filters.search.toLowerCase();
-                    rawData = rawData.filter(a => a.user_name?.toLowerCase().includes(q));
-                    prevData = prevData.filter(a => a.user_name?.toLowerCase().includes(q));
+                    rawData = rawData.filter(a => a.user_name?.toLowerCase().includes(q) || a.user_dept?.toLowerCase().includes(q));
+                    prevData = prevData.filter(a => a.user_name?.toLowerCase().includes(q) || a.user_dept?.toLowerCase().includes(q));
                 }
 
                 const prevAvg = calculateAvgWorkHours(prevData);
@@ -440,136 +455,139 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
             fetchInsights();
-        }, 500);
+        }, 300);
         return () => clearTimeout(timer);
-    }, [filters, allUsers]);
+    }, [filters, allUsers, refreshTrigger]);
 
     return (
-        <div className="flex flex-col gap-6 h-full overflow-y-auto pb-10 custom-scrollbar pr-2">
+        <div className="flex flex-col gap-5 h-full overflow-y-auto pb-8 custom-scrollbar pr-1">
+            {!hideTopControls && (
+                <>
+                    {/* --- Enhanced Filter Bar (Real-time Monitoring Card) --- */}
+                    <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border sticky top-0 z-30">
+                        <div className="p-3.5 border-b border-slate-200 dark:border-github-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-lg font-semibold text-slate-800 dark:text-github-dark-text">Real-time Monitoring</h2>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </span>
+                                    Live
+                                </div>
+                            </div>
 
-            {/* --- Enhanced Filter Bar (Real-time Monitoring Card) --- */}
-            <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border sticky top-0 z-30">
-                <div className="p-3.5 border-b border-slate-200 dark:border-github-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-lg font-semibold text-slate-800 dark:text-github-dark-text">Real-time Monitoring</h2>
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                            <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                            </span>
-                            Live
-                        </div>
-                    </div>
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                                <MinimalSelect
+                                    options={[
+                                        { value: 'All', label: 'All Depts' },
+                                        ...departments.map(d => ({ value: d, label: d }))
+                                    ]}
+                                    value={filters.dept}
+                                    onChange={(val) => setFilters(prev => ({ ...prev, dept: val }))}
+                                    placeholder="All Depts"
+                                    icon={Filter}
+                                />
 
-                    <div className="flex items-center gap-3 w-full sm:w-auto">
-                        <MinimalSelect
-                            options={[
-                                { value: 'All', label: 'All Depts' },
-                                ...departments.map(d => ({ value: d, label: d }))
-                            ]}
-                            value={filters.dept}
-                            onChange={(val) => setFilters(prev => ({ ...prev, dept: val }))}
-                            placeholder="All Depts"
-                            icon={Filter}
-                        />
+                                <MinimalSelect
+                                    options={[
+                                        { value: 'All', label: 'All Designations' },
+                                        ...designationsList.filter(d => d !== "All").map(d => ({ value: d, label: d }))
+                                    ]}
+                                    value={filters.desg}
+                                    onChange={(val) => setFilters(prev => ({ ...prev, desg: val }))}
+                                    placeholder="All Designations"
+                                    searchable={true}
+                                    icon={Filter}
+                                />
 
-                        <MinimalSelect
-                            options={[
-                                { value: 'All', label: 'All Designations' },
-                                ...designationsList.filter(d => d !== "All").map(d => ({ value: d, label: d }))
-                            ]}
-                            value={filters.desg}
-                            onChange={(val) => setFilters(prev => ({ ...prev, desg: val }))}
-                            placeholder="All Designations"
-                            searchable={true}
-                            icon={Filter}
-                        />
-
-                        {/* Preserved Controls */}
-                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg px-2 py-1.5 hidden md:flex">
-                            <input
-                                type="date"
-                                value={filters.startDate}
-                                onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                                className="bg-transparent text-xs font-bold text-slate-600 dark:text-slate-300 outline-none w-[90px]"
-                            />
-                            <span className="text-slate-400 font-medium text-[11px] uppercase tracking-wider">to</span>
-                            <input
-                                type="date"
-                                value={filters.endDate}
-                                onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                                className="bg-transparent text-xs font-bold text-slate-600 dark:text-slate-300 outline-none w-[90px]"
-                            />
-                        </div>
-                        <button
-                            onClick={onOpenConfig}
-                            className="px-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-500 hover:text-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-all shadow-sm active:scale-95 flex items-center gap-2"
-                        >
-                            <Settings size={15} className="opacity-70" />
-                            <span className="text-[12px] font-medium tracking-wide">Configurations</span>
-                        </button>
-                        <button
-                            onClick={fetchInsights}
-                            className="p-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all shadow-sm active:scale-95"
-                            title="Refresh Data"
-                        >
-                            <RefreshCw size={16} />
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
-                <div data-tour-id="dar-admin-insights-submission" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                    <div>
-                        <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Submission Rate</div>
-                        <div className="text-lg font-black text-slate-800 dark:text-github-dark-text">{stats.submissionRate}%</div>
-                        <div className="text-[8.5px] text-emerald-500 font-bold mt-1">
-                            {Math.round(stats.submittedCount)}/{stats.totalEmployees} Employees
-                        </div>
-                    </div>
-                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-1.5 rounded-full">
-                        <FileText size={16} className="text-emerald-500" />
-                    </div>
-                </div>
-                <div data-tour-id="dar-admin-insights-activity" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                    <div className="min-w-0 flex-1 mr-1.5">
-                        <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Top Activity</div>
-                        <div className="text-lg font-black text-indigo-600 dark:text-indigo-400 truncate" title={stats.topActivity}>{stats.topActivity}</div>
-                        <div className="text-[8.5px] text-slate-400 font-bold mt-1 truncate">{stats.topActivityPercent}% of total time</div>
-                    </div>
-                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-1.5 rounded-full flex-shrink-0">
-                        <BarChart3 size={16} className="text-indigo-500" />
-                    </div>
-                </div>
-                <div data-tour-id="dar-admin-insights-workhours" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                    <div>
-                        <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Average Work Hours</div>
-                        <div className="flex items-baseline gap-1.5 mt-0.5">
-                            <div className="text-lg font-black text-purple-600 dark:text-purple-400">{stats.avgHours || "0h 0m"}</div>
-                            <div className={`flex items-center text-[9px] font-bold px-1 py-0.5 rounded ${stats.avgTrend === 'up' ? 'bg-emerald-50 text-emerald-600' : stats.avgTrend === 'down' ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-600'
-                                }`}>
-                                {stats.avgTrend === 'up' ? <TrendingUp size={9} className="mr-1" /> : stats.avgTrend === 'down' ? <TrendingDown size={9} className="mr-1" /> : null}
-                                {stats.avgDiff}%
+                                {/* Preserved Controls */}
+                                <div className="flex items-center gap-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg px-2 py-1.5 hidden md:flex">
+                                    <input
+                                        type="date"
+                                        value={filters.startDate}
+                                        onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                                        className="bg-transparent text-xs font-bold text-slate-600 dark:text-slate-300 outline-none w-[90px]"
+                                    />
+                                    <span className="text-slate-400 font-medium text-[11px] uppercase tracking-wider">to</span>
+                                    <input
+                                        type="date"
+                                        value={filters.endDate}
+                                        onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                                        className="bg-transparent text-xs font-bold text-slate-600 dark:text-slate-300 outline-none w-[90px]"
+                                    />
+                                </div>
+                                <button
+                                    onClick={onOpenConfig}
+                                    className="px-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-500 hover:text-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-all shadow-sm active:scale-95 flex items-center gap-2"
+                                >
+                                    <Settings size={15} className="opacity-70" />
+                                    <span className="text-[12px] font-medium tracking-wide">Configurations</span>
+                                </button>
+                                <button
+                                    onClick={fetchInsights}
+                                    className="p-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all shadow-sm active:scale-95"
+                                    title="Refresh Data"
+                                >
+                                    <RefreshCw size={16} />
+                                </button>
                             </div>
                         </div>
-                        <p className="text-[8.5px] text-slate-400 font-bold mt-1">Per active employee</p>
                     </div>
-                    <div className="bg-purple-50 dark:bg-purple-900/20 p-1.5 rounded-full">
-                        <Clock size={16} className="text-purple-500" />
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+                        <div data-tour-id="dar-admin-insights-submission" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
+                            <div>
+                                <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Submission Rate</div>
+                                <div className="text-lg font-black text-slate-800 dark:text-github-dark-text">{stats.submissionRate}%</div>
+                                <div className="text-[8.5px] text-emerald-500 font-bold mt-1">
+                                    {Math.round(stats.submittedCount)}/{stats.totalEmployees} Employees
+                                </div>
+                            </div>
+                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-1.5 rounded-full">
+                                <FileText size={16} className="text-emerald-500" />
+                            </div>
+                        </div>
+                        <div data-tour-id="dar-admin-insights-activity" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
+                            <div className="min-w-0 flex-1 mr-1.5">
+                                <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Top Activity</div>
+                                <div className="text-lg font-black text-indigo-600 dark:text-indigo-400 truncate" title={stats.topActivity}>{stats.topActivity}</div>
+                                <div className="text-[8.5px] text-slate-400 font-bold mt-1 truncate">{stats.topActivityPercent}% of total time</div>
+                            </div>
+                            <div className="bg-indigo-50 dark:bg-indigo-900/20 p-1.5 rounded-full flex-shrink-0">
+                                <BarChart3 size={16} className="text-indigo-500" />
+                            </div>
+                        </div>
+                        <div data-tour-id="dar-admin-insights-workhours" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
+                            <div>
+                                <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Average Work Hours</div>
+                                <div className="flex items-baseline gap-1.5 mt-0.5">
+                                    <div className="text-lg font-black text-purple-600 dark:text-purple-400">{stats.avgHours || "0h 0m"}</div>
+                                    <div className={`flex items-center text-[9px] font-bold px-1 py-0.5 rounded ${stats.avgTrend === 'up' ? 'bg-emerald-50 text-emerald-600' : stats.avgTrend === 'down' ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-600'
+                                        }`}>
+                                        {stats.avgTrend === 'up' ? <TrendingUp size={9} className="mr-1" /> : stats.avgTrend === 'down' ? <TrendingDown size={9} className="mr-1" /> : null}
+                                        {stats.avgDiff}%
+                                    </div>
+                                </div>
+                                <p className="text-[8.5px] text-slate-400 font-bold mt-1">Per active employee</p>
+                            </div>
+                            <div className="bg-purple-50 dark:bg-purple-900/20 p-1.5 rounded-full">
+                                <Clock size={16} className="text-purple-500" />
+                            </div>
+                        </div>
+                        <div data-tour-id="dar-admin-insights-idletime" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
+                            <div>
+                                <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Average Idle Time</div>
+                                <div className="text-lg font-black text-orange-500 dark:text-orange-400">{stats.avgIdle}</div>
+                                <div className="text-[8.5px] text-slate-400 font-bold mt-1">Unaccounted gaps between shift</div>
+                            </div>
+                            <div className="bg-orange-50 dark:bg-orange-900/20 p-1.5 rounded-full">
+                                <Clock size={16} className="text-orange-500" />
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div data-tour-id="dar-admin-insights-idletime" className="bg-white dark:bg-dark-card p-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                    <div>
-                        <div className="text-slate-500 text-[9px] font-bold uppercase tracking-wide mb-1">Average Idle Time</div>
-                        <div className="text-lg font-black text-orange-500 dark:text-orange-400">{stats.avgIdle}</div>
-                        <div className="text-[8.5px] text-slate-400 font-bold mt-1">Unaccounted gaps between shift</div>
-                    </div>
-                    <div className="bg-orange-50 dark:bg-orange-900/20 p-1.5 rounded-full">
-                        <Clock size={16} className="text-orange-500" />
-                    </div>
-                </div>
-            </div>
+                </>
+            )}
 
             {/* Row 2: Workload Trend (Area Chart) */}
             <div data-tour-id="dar-admin-insights-workload" className="lg:col-span-2 bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border">

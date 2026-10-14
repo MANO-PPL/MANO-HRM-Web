@@ -42,7 +42,25 @@ function enumerateDates(startDate, endDate) {
     return dates;
 }
 
-const MasterDataView = ({ departments, shifts, allUsers }) => {
+const MasterDataView = ({
+    departments = [],
+    shifts = [],
+    allUsers = [],
+    dateRange: propDateRange,
+    setDateRange: propSetDateRange,
+    datePreset,
+    setDatePreset,
+    timeMode: propTimeMode,
+    setTimeMode: propSetTimeMode,
+    selectedDepartment: propDepartment,
+    setSelectedDepartment: propSetDepartment,
+    selectedDesignation: propDesignation,
+    setSelectedDesignation: propSetDesignation,
+    selectedShift: propShift,
+    setSelectedShift: propSetShift,
+    searchQuery: propSearchQuery = '',
+    isEmbeddedInAdmin = false
+}) => {
     // Helper to get local YYYY-MM-DD
     const getLocalToday = () => {
         const d = new Date();
@@ -52,25 +70,71 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         return `${year}-${month}-${day}`;
     };
 
-    const [dateRange, setDateRange] = useState({ start: getLocalToday(), end: getLocalToday() });
-    const [timeMode, setTimeMode] = useState('day');
+    const [internalDateRange, setInternalDateRange] = useState({ start: getLocalToday(), end: getLocalToday() });
+    const dateRange = propDateRange !== undefined ? propDateRange : internalDateRange;
+    const setDateRange = propSetDateRange !== undefined ? propSetDateRange : setInternalDateRange;
+
+    const [internalTimeMode, setInternalTimeMode] = useState(() => {
+        if (datePreset === '30d') return 'month';
+        if (datePreset === '7d') return 'week';
+        if (propDateRange && propDateRange.start !== propDateRange.end) return 'week';
+        return 'day';
+    });
+    const timeMode = propTimeMode !== undefined ? propTimeMode : internalTimeMode;
+    const setTimeMode = propSetTimeMode !== undefined ? propSetTimeMode : setInternalTimeMode;
+
+    // Synchronize timeMode with datePreset or dateRange
+    useEffect(() => {
+        if (datePreset === 'today') {
+            setTimeMode('day');
+        } else if (datePreset === '7d') {
+            setTimeMode('week');
+        } else if (datePreset === '30d') {
+            setTimeMode('month');
+        } else if (dateRange.start === dateRange.end) {
+            setTimeMode('day');
+        }
+    }, [datePreset, dateRange.start, dateRange.end]);
+
     const [loadingData, setLoadingData] = useState(false);
     const [timelineData, setTimelineData] = useState([]);
     const [summaryByQuery, setSummaryByQuery] = useState({});
     const [sidebarConfig, setSidebarConfig] = useState({ isOpen: false, user: null });
-    const [selectedShift, setSelectedShift] = useState('All Shifts'); // Name of shift or 'All Shifts'
+    const [hoveredTask, setHoveredTask] = useState(null);
+    const [selectedDayFilter, setSelectedDayFilter] = useState('all');
+    const holidaysCacheRef = useRef(null);
+    const activeFetchIdRef = useRef(0);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            if (hoveredTask) setHoveredTask(null);
+        };
+        window.addEventListener('scroll', handleScroll, true);
+        return () => window.removeEventListener('scroll', handleScroll, true);
+    }, [hoveredTask]);
+
+    const [internalShift, setInternalShift] = useState('All Shifts');
+    const selectedShift = propShift !== undefined ? propShift : internalShift;
+    const setSelectedShift = propSetShift !== undefined ? propSetShift : setInternalShift;
+
     const [currentShift, setCurrentShift] = useState({ start: 8, end: 19 }); // Default View Range
     const [usersList, setUsersList] = useState([]);
 
     const effectiveUsers = usersList.length > 0 ? usersList : allUsers;
 
-    const [selectedDepartment, setSelectedDepartment] = useState("All Departments");
-    const [selectedDesignation, setSelectedDesignation] = useState("All Designations");
+    const [internalDept, setInternalDept] = useState("All Departments");
+    const selectedDepartment = propDepartment !== undefined ? propDepartment : internalDept;
+    const setSelectedDepartment = propSetDepartment !== undefined ? propSetDepartment : setInternalDept;
+
+    const [internalDesg, setInternalDesg] = useState("All Designations");
+    const selectedDesignation = propDesignation !== undefined ? propDesignation : internalDesg;
+    const setSelectedDesignation = propSetDesignation !== undefined ? propSetDesignation : setInternalDesg;
+
     const [selectedEmployee, setSelectedEmployee] = useState("All Employees");
     const [employeesList, setEmployeesList] = useState([]);
 
     const designationsList = React.useMemo(() => {
-        const desgs = effectiveUsers.map(u => u.designation).filter(d => d && d !== '-');
+        const desgs = effectiveUsers.map(u => u.designation).filter(d => d && d !== '-' && d !== 'N/A');
         return ["All Designations", ...new Set(desgs)].sort((a, b) => a.localeCompare(b));
     }, [effectiveUsers]);
 
@@ -166,7 +230,8 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         let filtered = effectiveUsers;
 
         // 1. Filter by Department
-        if (selectedDepartment !== "All Departments") {
+        const isAllDepts = !selectedDepartment || selectedDepartment === 'All' || selectedDepartment === 'All Departments';
+        if (!isAllDepts) {
             filtered = filtered.filter(u => u.dept === selectedDepartment);
         }
 
@@ -175,8 +240,9 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
             filtered = filtered.filter(u => u.shift === selectedShift);
         }
 
-        // 4. Filter by Designation
-        if (selectedDesignation !== "All Designations") {
+        // 3. Filter by Designation
+        const isAllDesgs = !selectedDesignation || selectedDesignation === 'All' || selectedDesignation === 'All Designations';
+        if (!isAllDesgs) {
             filtered = filtered.filter(u => u.designation === selectedDesignation);
         }
 
@@ -185,296 +251,386 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
     const fetchMasterData = async () => {
         setLoadingData(true);
+        const fetchId = ++activeFetchIdRef.current;
         try {
             const selectedStart = dateRange.start;
             const selectedEnd = dateRange.end;
 
-            // Parallel Fetch: Users (Reports-like date range matching), Activities, Attendance, Holidays, Events
-            const [usersRes, res, attRes, holRes, eventsRes] = await Promise.all([
-                api.get(`/admin/users`, { params: { startDate: selectedStart, endDate: selectedEnd } }).catch(() => null),
+            // Parallel Fetch using allSettled for resilience: Activities, Users, Attendance (skip images for speed), Holidays, Events
+            const reqPromises = [
+                (!allUsers || allUsers.length === 0)
+                    ? api.get('/admin/users', { params: { startDate: selectedStart, endDate: selectedEnd } })
+                    : Promise.resolve({ data: { success: true, users: [] } }),
                 api.get(`/dar/activities/admin/all?startDate=${selectedStart}&endDate=${selectedEnd}`),
-                api.get(`/attendance/records/admin`, { params: { date_from: selectedStart, date_to: selectedEnd, limit: 1000 } }),
-                api.get('/holiday'),
+                api.get('/attendance/records/admin', { params: { date_from: selectedStart, date_to: selectedEnd, limit: 2000, skip_images: 'true' } }),
+                holidaysCacheRef.current
+                    ? Promise.resolve({ data: { holidays: holidaysCacheRef.current } })
+                    : api.get('/holiday'),
                 api.get('/dar/events/admin/all', { params: { date_from: selectedStart, date_to: selectedEnd } })
-            ]);
+            ];
 
-            let activeUsers = allUsers;
-            if (usersRes?.data?.success && Array.isArray(usersRes.data.users) && usersRes.data.users.length > 0) {
-                activeUsers = usersRes.data.users.map(u => ({
-                    userId: u.user_id,
-                    name: u.user_name,
-                    dept: u.dept_name,
-                    shift: u.shift_name,
-                    role: u.user_type,
-                    designation: u.desg_name || 'N/A'
+            const [usersSettled, actSettled, attSettled, holSettled, eventsSettled] = await Promise.allSettled(reqPromises);
+            if (fetchId !== activeFetchIdRef.current) return; // Stale request, ignore
+
+            // 1. Determine active users with robust fallback
+            let activeUsers = [];
+            if (Array.isArray(allUsers) && allUsers.length > 0) {
+                activeUsers = allUsers.map(u => ({
+                    userId: u.userId || u.user_id,
+                    name: u.name || u.user_name,
+                    dept: u.dept || u.dept_name,
+                    shift: u.shift || u.shift_name,
+                    role: u.role || u.user_type,
+                    designation: u.designation || u.desg_name || 'N/A'
                 }));
-                setUsersList(activeUsers);
+            } else {
+                const usersRes = usersSettled.status === 'fulfilled' ? usersSettled.value : null;
+                if (usersRes?.data?.success && Array.isArray(usersRes.data.users) && usersRes.data.users.length > 0) {
+                    activeUsers = usersRes.data.users.map(u => ({
+                        userId: u.user_id,
+                        name: u.user_name,
+                        dept: u.dept_name,
+                        shift: u.shift_name,
+                        role: u.user_type,
+                        designation: u.desg_name || 'N/A'
+                    }));
+                    setUsersList(activeUsers);
+                }
             }
 
-            if (res.data.ok) {
-                // Process Holidays
-                const holidayMap = {}; // date -> name
-                if (holRes.data?.holidays) {
-                    holRes.data.holidays.forEach(h => {
-                        holidayMap[h.holiday_date] = h.holiday_name;
-                    });
+            // 2. Extract activities
+            const res = actSettled.status === 'fulfilled' ? actSettled.value : null;
+            const activitiesData = (res?.data?.ok && Array.isArray(res.data.data)) ? res.data.data : [];
+
+            // 3. Process Holidays
+            const holRes = holSettled.status === 'fulfilled' ? holSettled.value : null;
+            if (!holidaysCacheRef.current && holRes?.data?.holidays && Array.isArray(holRes.data.holidays)) {
+                holidaysCacheRef.current = holRes.data.holidays;
+            }
+            const holidayMap = {};
+            const holList = holidaysCacheRef.current || holRes?.data?.holidays || [];
+            if (Array.isArray(holList)) {
+                holList.forEach(h => {
+                    if (h.holiday_date) {
+                        const d = String(h.holiday_date).split('T')[0];
+                        holidayMap[d] = h.holiday_name;
+                    }
+                });
+            }
+
+            // 4. Process Attendance efficiently
+            const attRes = attSettled.status === 'fulfilled' ? attSettled.value : null;
+            const attendanceMap = {};
+            if (attRes?.data?.data && Array.isArray(attRes.data.data)) {
+                attRes.data.data.forEach(att => {
+                    if (!att.time_in) return;
+                    const cleanTime = String(att.time_in).replace('T', ' ');
+                    const [datePart, timePart] = cleanTime.split(' ');
+                    if (!datePart || !timePart) return;
+                    if (datePart < selectedStart || datePart > selectedEnd) return;
+
+                    const [h, m] = timePart.split(':').map(Number);
+                    const dec = (h || 0) + ((m || 0) / 60);
+
+                    const key = `${att.user_id}-${datePart}`;
+                    const status = String(att.status || '').toUpperCase();
+                    const existing = attendanceMap[key];
+
+                    if (!existing || dec < existing.timeInDecimal) {
+                        attendanceMap[key] = {
+                            hasTimedIn: true,
+                            timeInDecimal: dec,
+                            timeInStr: `${String(h || 0).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`,
+                            status
+                        };
+                    } else if (!existing.status && status) {
+                        existing.status = status;
+                    }
+                });
+            }
+
+            // 5. Group activities
+            const grouped = {};
+            const userMap = {};
+            activeUsers.forEach(u => { userMap[u.userId] = u; });
+
+            const parseTimeHelper = (t) => {
+                if (!t) return 0;
+                const [h, m] = String(t).split(':').map(Number);
+                return (h || 0) + ((m || 0) / 60);
+            };
+
+            activitiesData.forEach(a => {
+                const localDate = String(a.activity_date || '').split('T')[0];
+                if (!localDate) return;
+                if (localDate < selectedStart || localDate > selectedEnd) return;
+                const key = `${a.user_id}-${localDate}`;
+                const u = userMap[a.user_id];
+
+                if (!grouped[key]) {
+                    grouped[key] = {
+                        id: key,
+                        userId: a.user_id,
+                        name: a.user_name || u?.name || 'Employee',
+                        role: a.user_role || u?.role || 'Employee',
+                        designation: u?.designation || 'N/A',
+                        date: localDate,
+                        dept: a.user_dept || u?.dept,
+                        shift: a.user_shift_name || u?.shift,
+                        activities: [],
+                        isHoliday: !!holidayMap[localDate],
+                        holidayName: holidayMap[localDate],
+                        isAbsent: false,
+                        attendance: attendanceMap[`${a.user_id}-${localDate}`]
+                    };
                 }
 
-                // Process Attendance efficiently
-                const attendanceMap = {};
-                if (attRes.data?.data) {
-                    attRes.data.data.forEach(att => {
-                        if (!att.time_in) return;
-                        const cleanTime = att.time_in.replace('T', ' ');
-                        const [datePart, timePart] = cleanTime.split(' ');
-                        if (!datePart || !timePart) return;
-                        if (datePart < selectedStart || datePart > selectedEnd) return;
+                grouped[key].activities.push({
+                    id: a.id || a.activity_id,
+                    start: parseTimeHelper(a.start_time),
+                    end: parseTimeHelper(a.end_time),
+                    category: a.activity_type,
+                    title: a.title || 'Task',
+                    description: a.description || '',
+                    status: a.status,
+                    activityDate: localDate
+                });
+            });
 
-                        const [h, m] = timePart.split(':').map(Number);
-                        const dec = h + (m / 60);
+            // Process Events
+            const eventsRes = eventsSettled.status === 'fulfilled' ? eventsSettled.value : null;
+            if (eventsRes?.data?.data && Array.isArray(eventsRes.data.data)) {
+                eventsRes.data.data.forEach(e => {
+                    const eventDate = String(e.event_date || '').split('T')[0];
+                    if (!eventDate || eventDate < selectedStart || eventDate > selectedEnd) return;
 
-                        const key = `${att.user_id}-${datePart}`;
-                        const status = String(att.status || '').toUpperCase();
-                        const existing = attendanceMap[key];
+                    const key = `${e.user_id}-${eventDate}`;
+                    const u = userMap[e.user_id];
 
-                        if (!existing || dec < existing.timeInDecimal) {
-                            attendanceMap[key] = {
-                                hasTimedIn: true,
-                                timeInDecimal: dec,
-                                timeInStr: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-                                status
-                            };
-                        } else if (!existing.status && status) {
-                            existing.status = status;
-                        }
-                    });
-                }
+                    if (!grouped[key] && u) {
+                        grouped[key] = {
+                            id: key,
+                            userId: u.userId,
+                            name: u.name,
+                            role: u.role || 'Employee',
+                            designation: u.designation || 'N/A',
+                            date: eventDate,
+                            dept: u.dept,
+                            shift: u.shift,
+                            activities: [],
+                            isHoliday: !!holidayMap[eventDate],
+                            holidayName: holidayMap[eventDate],
+                            isAbsent: false,
+                            attendance: attendanceMap[`${e.user_id}-${eventDate}`]
+                        };
+                    }
 
-                // Group activities
-                const grouped = {};
-                const userMap = {};
-                activeUsers.forEach(u => userMap[u.userId] = u);
+                    if (grouped[key]) {
+                        grouped[key].activities.push({
+                            id: `evt-${e.event_id}`,
+                            start: parseTimeHelper(e.start_time),
+                            end: parseTimeHelper(e.end_time),
+                            category: (e.type || '').toUpperCase(),
+                            title: e.title,
+                            description: e.description || '',
+                            isEvent: true,
+                            location: e.location,
+                            activityDate: eventDate
+                        });
+                    }
+                });
+            }
 
-                // Helper inside fetchMasterData scope
-                const parseTimeHelper = (t) => {
-                    const [h, m] = t.split(':').map(Number);
-                    return h + (m / 60);
-                };
+            // Backfill Gaps for all active users across date range
+            const dates = [];
+            let cursor = selectedStart;
+            while (cursor <= selectedEnd) {
+                dates.push(cursor);
+                cursor = shiftDateYMD(cursor, 1);
+            }
 
-                res.data.data.forEach(a => {
-                    const localDate = String(a.activity_date || '').split('T')[0];
-                    if (!localDate) return;
-                    if (localDate < selectedStart || localDate > selectedEnd) return;
-                    const key = `${a.user_id}-${localDate}`;
-                    const u = userMap[a.user_id];
+            activeUsers.forEach(u => {
+                dates.forEach(dateStr => {
+                    const key = `${u.userId}-${dateStr}`;
+                    const isHol = !!holidayMap[dateStr];
+                    const attData = attendanceMap[`${u.userId}-${dateStr}`];
 
                     if (!grouped[key]) {
                         grouped[key] = {
                             id: key,
-                            userId: a.user_id,
-                            name: a.user_name,
-                            role: a.user_role || 'Employee',
-                            designation: u?.designation || 'N/A',
-                            date: localDate,
-                            dept: a.user_dept,
-                            shift: a.user_shift_name,
+                            userId: u.userId,
+                            name: u.name,
+                            role: u.role || 'Employee',
+                            designation: u.designation || 'N/A',
+                            date: dateStr,
+                            dept: u.dept,
+                            shift: u.shift,
                             activities: [],
-                            isHoliday: !!holidayMap[localDate],
-                            holidayName: holidayMap[localDate],
+                            isHoliday: isHol,
+                            holidayName: holidayMap[dateStr],
                             isAbsent: false,
-                            attendance: attendanceMap[`${a.user_id}-${localDate}`]
+                            attendance: attData
+                        };
+                    } else {
+                        grouped[key].isHoliday = isHol;
+                        grouped[key].holidayName = holidayMap[dateStr];
+                        if (!grouped[key].attendance) grouped[key].attendance = attData;
+                    }
+                });
+            });
+
+            // Final absence pass: do not label as absent when DAR/Event activities exist.
+            Object.values(grouped).forEach((item) => {
+                const hasActivities = Array.isArray(item.activities) && item.activities.length > 0;
+                const explicitAbsent = String(item.attendance?.status || '').toUpperCase() === ATTENDANCE_STATUS.ABSENT;
+                item.isAbsent = !item.isHoliday && !hasActivities && explicitAbsent;
+            });
+
+            // Re-aggregate data if multi-day or timeMode is not 'day'
+            const isMultiDay = selectedStart !== selectedEnd;
+            let finalData = Object.values(grouped);
+
+            if (timeMode !== 'day' || isMultiDay) {
+                const aggregated = {};
+                Object.values(grouped).forEach((item) => {
+                    const key = item.userId;
+                    if (!aggregated[key]) {
+                        aggregated[key] = {
+                            id: key,
+                            userId: item.userId,
+                            name: item.name,
+                            role: item.role,
+                            designation: item.designation,
+                            dateStart: item.date,
+                            dateEnd: item.date,
+                            dept: item.dept,
+                            shift: item.shift,
+                            activities: [],
+                            holidayDates: [],
+                            absentDates: [],
+                            attendance: item.attendance
                         };
                     }
-
-                    grouped[key].activities.push({
-                        id: a.id,
-                        start: parseTimeHelper(a.start_time),
-                        end: parseTimeHelper(a.end_time),
-                        category: a.activity_type,
-                        title: a.title || 'Task',
-                        activityDate: localDate
-                    });
+                    aggregated[key].dateEnd = item.date;
+                    aggregated[key].activities.push(...item.activities);
+                    if (item.isHoliday) {
+                        aggregated[key].holidayDates.push(item.date);
+                    }
+                    if (item.isAbsent) {
+                        aggregated[key].absentDates.push(item.date);
+                    }
+                    if (!aggregated[key].attendance && item.attendance) {
+                        aggregated[key].attendance = item.attendance;
+                    }
                 });
 
-                // Process Events
-                // userMap is already generated above
-
-                if (eventsRes.data?.data) {
-                    eventsRes.data.data.forEach(e => {
-                        const eventDate = String(e.event_date || '').split('T')[0];
-                        if (!eventDate || eventDate < selectedStart || eventDate > selectedEnd) return;
-
-                        const key = `${e.user_id}-${eventDate}`;
-
-                        if (!grouped[key]) {
-                            const u = userMap[e.user_id];
-                            if (u) {
-                                grouped[key] = {
-                                    id: key,
-                                    userId: u.userId,
-                                    name: u.name,
-                                    role: u.role || 'Employee',
-                                    designation: u.designation || 'N/A',
-                                    date: eventDate,
-                                    dept: u.dept,
-                                    shift: u.shift,
-                                    activities: [],
-                                    isHoliday: !!holidayMap[eventDate],
-                                    holidayName: holidayMap[eventDate],
-                                    isAbsent: false,
-                                    attendance: attendanceMap[`${e.user_id}-${eventDate}`]
-                                };
-                            }
-                        }
-
-                        if (grouped[key]) {
-                            const parseTime = (t) => {
-                                if (!t) return 0;
-                                const [h, m] = t.split(':').map(Number);
-                                return h + (m / 60);
-                            };
-
-                            grouped[key].activities.push({
-                                id: `evt-${e.event_id}`,
-                                start: parseTime(e.start_time),
-                                end: parseTime(e.end_time),
-                                category: (e.type || '').toUpperCase(),
-                                title: e.title,
-                                isEvent: true,
-                                location: e.location,
-                                activityDate: eventDate
-                            });
-                        }
-                    });
-                }
-
-                // Backfill Gaps
-                const dates = [];
-                let cursor = selectedStart;
-                while (cursor <= selectedEnd) {
-                    dates.push(cursor);
-                    cursor = shiftDateYMD(cursor, 1);
-                }
-
-                activeUsers.forEach(u => {
-                    dates.forEach(dateStr => {
-                        const key = `${u.userId}-${dateStr}`;
-                        const isHol = !!holidayMap[dateStr];
-                        const attData = attendanceMap[`${u.userId}-${dateStr}`];
-                        const isAbsent = false;
-
-                        if (!grouped[key]) {
-                            grouped[key] = {
-                                id: key,
-                                userId: u.userId,
-                                name: u.name,
-                                role: u.role || 'Employee',
-                                designation: u.designation || 'N/A',
-                                date: dateStr,
-                                dept: u.dept,
-                                shift: u.shift,
-                                activities: [],
-                                isHoliday: isHol,
-                                holidayName: holidayMap[dateStr],
-                                isAbsent: isAbsent,
-                                attendance: attData
-                            };
-                        } else {
-                            grouped[key].isHoliday = isHol;
-                            grouped[key].holidayName = holidayMap[dateStr];
-                            grouped[key].isAbsent = isAbsent;
-                            if (!grouped[key].attendance) grouped[key].attendance = attData;
-                        }
-                    });
+                Object.values(aggregated).forEach((item) => {
+                    item.isHoliday = item.holidayDates.length > 0;
+                    item.isAbsent = item.absentDates.length > 0 && item.holidayDates.length === 0;
                 });
 
-                // Final absence pass: do not label as absent when DAR/Event activities exist.
-                Object.values(grouped).forEach((item) => {
-                    const hasActivities = Array.isArray(item.activities) && item.activities.length > 0;
-                    const explicitAbsent = String(item.attendance?.status || '').toUpperCase() === ATTENDANCE_STATUS.ABSENT;
-                    item.isAbsent = !item.isHoliday && !hasActivities && explicitAbsent;
-                });
-
-                // Re-aggregate data if not in 'day' mode
-                let finalData = Object.values(grouped);
-                if (timeMode !== 'day') {
-                    const aggregated = {};
-                    Object.values(grouped).forEach((item) => {
-                        const key = item.userId;
-                        if (!aggregated[key]) {
-                            aggregated[key] = {
-                                id: key,
-                                userId: item.userId,
-                                name: item.name,
-                                role: item.role,
-                                designation: item.designation,
-                                dateStart: item.date,
-                                dateEnd: item.date,
-                                dept: item.dept,
-                                shift: item.shift,
-                                activities: [],
-                                holidayDates: [],
-                                absentDates: []
-                            };
-                        }
-                        aggregated[key].dateEnd = item.date;
-                        aggregated[key].activities.push(...item.activities);
-                        if (item.isHoliday) {
-                            aggregated[key].holidayDates.push(item.date);
-                        }
-                        if (item.isAbsent) {
-                            aggregated[key].absentDates.push(item.date);
-                        }
-                    });
-
-                    // Set isHoliday and isAbsent flags based on aggregated dates
-                    Object.values(aggregated).forEach((item) => {
-                        item.isHoliday = item.holidayDates.length > 0;
-                        item.isAbsent = item.absentDates.length > 0 && item.holidayDates.length === 0;
-                    });
-
-                    finalData = Object.values(aggregated);
-                }
-
-                const sorted = finalData
-                    .sort((a, b) => {
-                        if (a.name === b.name) return new Date(a.dateStart || a.date) - new Date(b.dateStart || b.date);
-                        return a.name.localeCompare(b.name);
-                    });
-                setTimelineData(sorted);
+                finalData = Object.values(aggregated);
             }
+
+            const sorted = finalData.sort((a, b) => {
+                if (a.name === b.name) return new Date(a.dateStart || a.date) - new Date(b.dateStart || b.date);
+                return (a.name || '').localeCompare(b.name || '');
+            });
+
+            setTimelineData(sorted);
         } catch (err) {
-            console.error(err);
-            toast.error("Failed to load timeline data");
+            console.error('Failed to load timeline data:', err);
+            // Fallback: populate from allUsers so user always sees employees
+            const fallbackUsers = (usersList.length > 0 ? usersList : allUsers).map(u => ({
+                id: u.userId || u.user_id,
+                userId: u.userId || u.user_id,
+                name: u.name || u.user_name,
+                role: u.role || u.user_type || 'Employee',
+                designation: u.designation || u.desg_name || 'N/A',
+                dept: u.dept || u.dept_name,
+                shift: u.shift || u.shift_name,
+                activities: [],
+                dateStart: dateRange.start,
+                dateEnd: dateRange.end,
+                date: dateRange.start
+            }));
+            if (fallbackUsers.length > 0) {
+                setTimelineData(fallbackUsers);
+            }
         } finally {
             setLoadingData(false);
         }
     };
 
     useEffect(() => {
+        setSelectedDayFilter('all');
         fetchMasterData();
-    }, [dateRange, allUsers]);
+    }, [dateRange.start, dateRange.end]);
 
-    const filteredTimelineData = timelineData.filter(user => {
-        if (selectedDepartment !== "All Departments" && user.dept !== selectedDepartment) return false;
-        if (selectedShift && selectedShift !== "All Shifts" && user.shift !== selectedShift) return false;
-        if (selectedEmployee !== "All Employees" && user.name !== selectedEmployee) return false;
-        if (selectedDesignation !== "All Designations" && user.designation !== selectedDesignation) return false;
-        return true;
-    });
+    const filteredTimelineData = React.useMemo(() => {
+        return timelineData.filter(user => {
+            const deptNorm = (selectedDepartment || '').toLowerCase().trim();
+            if (deptNorm && deptNorm !== 'all' && deptNorm !== 'all departments') {
+                if ((user.dept || '').toLowerCase().trim() !== deptNorm) return false;
+            }
+
+            const shiftNorm = (selectedShift || '').toLowerCase().trim();
+            if (shiftNorm && shiftNorm !== 'all' && shiftNorm !== 'all shifts') {
+                if ((user.shift || '').toLowerCase().trim() !== shiftNorm) return false;
+            }
+
+            const empNorm = (selectedEmployee || '').toLowerCase().trim();
+            if (empNorm && empNorm !== 'all' && empNorm !== 'all employees') {
+                if ((user.name || '').toLowerCase().trim() !== empNorm) return false;
+            }
+
+            const desgNorm = (selectedDesignation || '').toLowerCase().trim();
+            if (desgNorm && desgNorm !== 'all' && desgNorm !== 'all designations') {
+                if ((user.designation || '').toLowerCase().trim() !== desgNorm) return false;
+            }
+
+            if (propSearchQuery && propSearchQuery.trim()) {
+                const q = propSearchQuery.toLowerCase().trim();
+                const nameMatch = (user.name || '').toLowerCase().includes(q);
+                const deptMatch = (user.dept || '').toLowerCase().includes(q);
+                const desgMatch = (user.designation || '').toLowerCase().includes(q);
+                if (!nameMatch && !deptMatch && !desgMatch) return false;
+            }
+
+            return true;
+        });
+    }, [timelineData, selectedDepartment, selectedShift, selectedEmployee, selectedDesignation, propSearchQuery]);
 
     const timeSlots = [];
     for (let i = currentShift.start; i <= currentShift.end; i++) {
         timeSlots.push(i);
     }
 
-    const formatTime = (val) => {
+    const formatTime = (val, isAxis = false) => {
+        if (val === undefined || val === null || isNaN(val)) return '';
         const normalized = val >= 24 ? val - 24 : val;
         const h = Math.floor(normalized);
-        const m = (normalized - h) * 60;
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        const h12 = h % 12 || 12;
-        return `${h12}${m > 0 ? ':' + m : ''} ${ampm}`;
+        const rawM = (normalized - h) * 60;
+        const m = Math.round(rawM);
+        const finalH = (h + Math.floor(m / 60)) % 24;
+        const finalM = m % 60;
+        const ampm = finalH >= 12 ? 'PM' : 'AM';
+        const h12 = finalH % 12 || 12;
+        if (isAxis && finalM === 0) {
+            return `${h12} ${ampm}`;
+        }
+        const mStr = String(finalM).padStart(2, '0');
+        return `${h12}:${mStr} ${ampm}`;
+    };
+
+    const formatDurationBetween = (start, end) => {
+        const diff = Math.max(0, (end || 0) - (start || 0));
+        const totalMinutes = Math.round(diff * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+        if (h > 0 && m > 0) return `${h} hr and ${m} mins`;
+        if (h > 0 && m === 0) return `${h} hr`;
+        return `${m} mins`;
     };
 
     const reportType = timeMode === 'day' ? 'daily' : (timeMode === 'week' ? 'weekly' : 'monthly');
@@ -482,11 +638,19 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
     const buildSummaryKey = (userId) => `${userId}|${reportType}|${dateRange.start}|${dateRange.end}`;
 
     const formatDateDisplay = (user) => {
-        if (timeMode === 'day') {
-            return formatPlatformDate(user.date);
-        } else {
-            return `${formatPlatformDate(user.dateStart)} - ${formatPlatformDate(user.dateEnd)}`;
+        if (!user) return '';
+        const s = user.date || user.dateStart || dateRange.start;
+        const e = user.dateEnd || dateRange.end;
+        if (!s) return '';
+        if (s === e) {
+            const d = new Date(s + 'T00:00:00');
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
+        const d1 = new Date(s + 'T00:00:00');
+        const d2 = new Date(e + 'T00:00:00');
+        const s1 = d1.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const s2 = d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `${s1} – ${s2}`;
     };
 
     const handleSummaryClick = async (user) => {
@@ -583,145 +747,273 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         }
     };
 
-    useEffect(() => {
-        setSidebarConfig({ isOpen: false, user: null });
-    }, [timeMode, dateRange.start, dateRange.end]);
+    const handleExportCSV = () => {
+        if (!filteredTimelineData || filteredTimelineData.length === 0) {
+            toast.info("No data available to export");
+            return;
+        }
+        const rows = [
+            ["Employee", "Department", "Designation", "Shift", "Date", "Attendance Status", "Time In", "Tasks Count"]
+        ];
+        filteredTimelineData.forEach(u => {
+            rows.push([
+                `"${u.name || ''}"`,
+                `"${u.dept || ''}"`,
+                `"${u.designation || ''}"`,
+                `"${u.shift || ''}"`,
+                `"${u.date || dateRange.start || ''}"`,
+                `"${u.attendanceStatus || 'N/A'}"`,
+                `"${u.timeIn || 'N/A'}"`,
+                (u.activities || []).length
+            ]);
+        });
+        const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `DAR_Activity_Timeline_${dateRange.start}_${dateRange.end}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Activity timeline exported successfully");
+    };
 
     return (
         <div data-tour-id="dar-admin-master-data" className="flex flex-col h-full bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden relative">
 
             {/* Toolbar */}
-            <div className="p-4 border-b border-slate-100 dark:border-github-dark-border flex flex-wrap gap-4 items-center justify-between bg-white dark:bg-dark-card z-20">
-                <div className="flex items-center gap-3">
+            {isEmbeddedInAdmin ? (
+                <div className="p-3 border-b border-slate-100 dark:border-github-dark-border flex flex-wrap gap-3 items-center justify-between bg-white dark:bg-dark-card z-20">
+                    <div className="flex items-center gap-3">
+                        {/* Day / Week / Month Mode Pills */}
+                        <div className="inline-flex rounded-lg border border-slate-200 dark:border-github-dark-border overflow-hidden">
+                            {[
+                                { key: 'day', label: 'Day', preset: 'today' },
+                                { key: 'week', label: 'Week', preset: '7d' },
+                                { key: 'month', label: 'Month', preset: '30d' },
+                            ].map((option) => (
+                                <button
+                                    key={option.key}
+                                    onClick={() => {
+                                        setTimeMode(option.key);
+                                        if (setDatePreset) {
+                                            setDatePreset(option.preset);
+                                        }
+                                        setDateRange(buildRangeByMode(dateRange.end, option.key));
+                                    }}
+                                    className={`px-3 py-1.5 text-xs font-bold transition-colors border-r last:border-r-0 border-slate-200 dark:border-github-dark-border cursor-pointer ${timeMode === option.key
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-white dark:bg-github-dark-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                        }`}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Calendar Date Range Inputs */}
+                        <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg px-2.5 py-1">
+                            <Calendar size={13} className="text-indigo-500 shrink-0" />
+                            <input
+                                type="date"
+                                value={dateRange.start}
+                                onChange={(e) => {
+                                    if (setDatePreset) setDatePreset('custom');
+                                    setDateRange(prev => ({ ...prev, start: e.target.value }));
+                                }}
+                                className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-200 outline-none w-[95px] cursor-pointer"
+                            />
+                            <span className="text-slate-400 text-[10px] font-bold uppercase">to</span>
+                            <input
+                                type="date"
+                                value={dateRange.end}
+                                onChange={(e) => {
+                                    if (setDatePreset) setDatePreset('custom');
+                                    setDateRange(prev => ({ ...prev, end: e.target.value }));
+                                }}
+                                className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-200 outline-none w-[95px] cursor-pointer"
+                            />
+                        </div>
+
+                        {/* Focus Day Filter (when multi-day range) */}
+                        {dateRange.start !== dateRange.end && (
+                            <MinimalSelect
+                                icon={Calendar}
+                                placeholder="Focus Day"
+                                options={[
+                                    { value: 'all', label: `All Active Days (${enumerateDates(dateRange.start, dateRange.end).length}d)` },
+                                    ...enumerateDates(dateRange.start, dateRange.end).map(d => {
+                                        const dateObj = new Date(d + 'T00:00:00');
+                                        const label = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
+                                        return { value: d, label };
+                                    })
+                                ]}
+                                value={selectedDayFilter}
+                                onChange={(val) => setSelectedDayFilter(val)}
+                                size="sm"
+                            />
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mr-1">
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2.5 h-2.5 rounded bg-indigo-500"></div>
+                                <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Task Logged</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2.5 h-2.5 rounded bg-slate-100 dark:bg-github-dark-subtle border border-slate-300 dark:border-github-dark-border border-dashed"></div>
+                                <span className="text-[11px] font-medium text-slate-400">Empty</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleExportCSV}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                            <Download size={14} />
+                            <span>Export</span>
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <div className="p-4 border-b border-slate-100 dark:border-github-dark-border flex flex-wrap gap-4 items-center justify-between bg-white dark:bg-dark-card z-20">
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <MinimalSelect
+                                icon={Clock}
+                                placeholder="Shift"
+                                options={["All Shifts", ...shifts.map(s => s.shift_name)]}
+                                value={selectedShift || "All Shifts"}
+                                onChange={(val) => setSelectedShift(val)}
+                                searchable
+                            />
+                        </div>
+                    </div>
+
+                    <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                    {/* Date Picker using MiniCalendar (Portal) */}
+                    <div className="relative">
+                        <button
+                            ref={buttonRef}
+                            onClick={toggleCalendar}
+                            className="flex items-center gap-2 pl-3 pr-4 py-2 bg-slate-50 dark:bg-github-dark-subtle rounded-lg border border-slate-200 dark:border-github-dark-border hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                        >
+                            <Calendar size={16} className="text-indigo-500" />
+                            <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">
+                                {dateRange.start === dateRange.end
+                                    ? formatPlatformDate(dateRange.start)
+                                    : `${formatPlatformDate(dateRange.start)} - ${formatPlatformDate(dateRange.end)}`
+                                }
+                            </span>
+                        </button>
+
+                        {showCalendar && createPortal(
+                            <div className="fixed inset-0 z-[9999] isolate">
+                                <div
+                                    className="fixed inset-0 bg-transparent"
+                                    onClick={() => setShowCalendar(false)}
+                                />
+                                <div
+                                    className="fixed z-[10000] drop-shadow-2xl"
+                                    style={{
+                                        top: calendarPos.top,
+                                        left: calendarPos.left,
+                                        maxWidth: '350px'
+                                    }}
+                                >
+                                    <MiniCalendar
+                                        selectedDate={dateRange.start}
+                                        startDate={dateRange.start}
+                                        endDate={dateRange.end}
+                                        maxDate={new Date().toISOString().split('T')[0]}
+                                        onDateSelect={(range) => {
+                                            const nextRange = buildRangeByMode(range.start, timeMode);
+                                            setDateRange(nextRange);
+                                            setShowCalendar(false);
+                                        }}
+                                    />
+                                </div>
+                            </div>,
+                            document.body
+                        )}
+                    </div>
+
+                    <div className="inline-flex rounded-lg border border-slate-200 dark:border-github-dark-border overflow-hidden">
+                        {[
+                            { key: 'day', label: 'Day', preset: 'today' },
+                            { key: 'week', label: 'Week', preset: '7d' },
+                            { key: 'month', label: 'Month', preset: '30d' },
+                        ].map((option) => (
+                            <button
+                                key={option.key}
+                                onClick={() => {
+                                    setTimeMode(option.key);
+                                    if (setDatePreset) {
+                                        setDatePreset(option.preset);
+                                    }
+                                    setDateRange(buildRangeByMode(dateRange.end, option.key));
+                                }}
+                                className={`px-3 py-2 text-xs font-bold transition-colors border-r last:border-r-0 border-slate-200 dark:border-github-dark-border cursor-pointer ${timeMode === option.key
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-white dark:bg-github-dark-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                    }`}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                    {/* Filters */}
                     <div className="flex items-center gap-2">
                         <MinimalSelect
-                            icon={Clock}
-                            placeholder="Shift"
-                            options={["All Shifts", ...shifts.map(s => s.shift_name)]}
-                            value={selectedShift || "All Shifts"}
-                            onChange={(val) => setSelectedShift(val)}
+                            icon={Building}
+                            placeholder="Department"
+                            options={["All Departments", ...departments]}
+                            value={selectedDepartment}
+                            onChange={setSelectedDepartment}
+                            searchable
+                        />
+
+                        <MinimalSelect
+                            icon={UserCheck}
+                            placeholder="Designation"
+                            options={designationsList}
+                            value={selectedDesignation}
+                            onChange={setSelectedDesignation}
+                            searchable
+                        />
+                        <MinimalSelect
+                            icon={Users}
+                            placeholder="Employee"
+                            options={["All Employees", ...employeesList]}
+                            value={selectedEmployee}
+                            onChange={setSelectedEmployee}
                             searchable
                         />
                     </div>
-                </div>
-
-                <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1"></div>
-
-                {/* Date Picker using MiniCalendar (Portal) */}
-                <div className="relative">
-                    <button
-                        ref={buttonRef}
-                        onClick={toggleCalendar}
-                        className="flex items-center gap-2 pl-3 pr-4 py-2 bg-slate-50 dark:bg-github-dark-subtle rounded-lg border border-slate-200 dark:border-github-dark-border hover:bg-white dark:hover:bg-slate-700 transition-colors"
-                    >
-                        <Calendar size={16} className="text-indigo-500" />
-                        <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">
-                            {dateRange.start === dateRange.end
-                                ? formatPlatformDate(dateRange.start)
-                                : `${formatPlatformDate(dateRange.start)} - ${formatPlatformDate(dateRange.end)}`
-                            }
-                        </span>
-                    </button>
-
-                    {showCalendar && createPortal(
-                        <div className="fixed inset-0 z-[9999] isolate">
-                            <div
-                                className="fixed inset-0 bg-transparent"
-                                onClick={() => setShowCalendar(false)}
-                            />
-                            <div
-                                className="fixed z-[10000] drop-shadow-2xl"
-                                style={{
-                                    top: calendarPos.top,
-                                    left: calendarPos.left,
-                                    maxWidth: '350px'
-                                }}
-                            >
-                                <MiniCalendar
-                                    selectedDate={dateRange.start}
-                                    startDate={dateRange.start}
-                                    endDate={dateRange.end}
-                                    maxDate={new Date().toISOString().split('T')[0]}
-                                    onDateSelect={(range) => {
-                                        const nextRange = buildRangeByMode(range.start, timeMode);
-                                        setDateRange(nextRange);
-                                        setShowCalendar(false);
-                                    }}
-                                />
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 mr-4">
+                            <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded bg-indigo-200 dark:bg-indigo-900/50"></div>
+                                <span className="text-xs text-slate-500">Task Logged</span>
                             </div>
-                        </div>,
-                        document.body
-                    )}
-                </div>
-
-                <div className="inline-flex rounded-lg border border-slate-200 dark:border-github-dark-border overflow-hidden">
-                    {[
-                        { key: 'day', label: 'Day' },
-                        { key: 'week', label: 'Week' },
-                        { key: 'month', label: 'Month' },
-                    ].map((option) => (
+                            <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded bg-slate-100 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border border-dashed"></div>
+                                <span className="text-xs text-slate-500">Empty</span>
+                            </div>
+                        </div>
                         <button
-                            key={option.key}
-                            onClick={() => {
-                                setTimeMode(option.key);
-                                setDateRange(buildRangeByMode(dateRange.end, option.key));
-                            }}
-                            className={`px-3 py-2 text-xs font-bold transition-colors border-r last:border-r-0 border-slate-200 dark:border-github-dark-border ${timeMode === option.key
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-white dark:bg-github-dark-subtle text-slate-600 dark:text-slate-300'
-                                }`}
+                            onClick={handleExportCSV}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold hover:bg-emerald-100 transition-colors"
                         >
-                            {option.label}
+                            <Download size={16} /> Export
                         </button>
-                    ))}
-                </div>
-
-                <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1"></div>
-
-                {/* Filters */}
-                <div className="flex items-center gap-2">
-                    <MinimalSelect
-                        icon={Building}
-                        placeholder="Department"
-                        options={["All Departments", ...departments]}
-                        value={selectedDepartment}
-                        onChange={setSelectedDepartment}
-                        searchable
-                    />
-
-                    <MinimalSelect
-                        icon={UserCheck}
-                        placeholder="Designation"
-                        options={designationsList}
-                        value={selectedDesignation}
-                        onChange={setSelectedDesignation}
-                        searchable
-                    />
-                    <MinimalSelect
-                        icon={Users}
-                        placeholder="Employee"
-                        options={["All Employees", ...employeesList]}
-                        value={selectedEmployee}
-                        onChange={setSelectedEmployee}
-                        searchable
-                    />
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2 mr-4">
-                        <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded bg-indigo-200 dark:bg-indigo-900/50"></div>
-                            <span className="text-xs text-slate-500">Task Logged</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded bg-slate-100 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border border-dashed"></div>
-                            <span className="text-xs text-slate-500">Empty</span>
-                        </div>
                     </div>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold hover:bg-emerald-100 transition-colors">
-                        <Download size={16} /> Export
-                    </button>
                 </div>
-            </div>
+            )}
 
             {/* Timeline Grid */}
             <div className="flex-1 overflow-auto relative custom-scrollbar">
@@ -742,96 +1034,164 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
                     {/* Rows */}
                     <div className="divide-y divide-slate-100 dark:divide-slate-700">
-                        {filteredTimelineData.map(user => {
-                            const summaryKey = buildSummaryKey(user.userId);
-                            const summaryState = summaryByQuery[summaryKey];
-                            const dayDates = timeMode === 'day'
-                                ? [user.date || dateRange.start]
-                                : enumerateDates(dateRange.start, dateRange.end);
+                        {loadingData ? (
+                            Array.from({ length: 8 }).map((_, idx) => (
+                                <div key={idx} className="flex animate-pulse">
+                                    <div className="w-48 p-4 flex flex-col justify-center border-r border-slate-100 dark:border-github-dark-border flex-shrink-0 sticky left-0 bg-white dark:bg-dark-card z-30 space-y-2">
+                                        <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-28"></div>
+                                        <div className="h-2.5 bg-slate-100 dark:bg-slate-800 rounded w-16"></div>
+                                        <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded w-20"></div>
+                                    </div>
+                                    <div className="flex-1 flex relative py-4 px-2 min-h-[72px] items-center">
+                                        {timeSlots.map(hour => (
+                                            <div key={hour} className="flex-1 min-w-[120px] border-r border-dashed border-slate-100 dark:border-github-dark-border/20 h-full absolute" style={{
+                                                left: `${((hour - currentShift.start) / (currentShift.end - currentShift.start + 1)) * 100}%`,
+                                                width: `${(1 / (currentShift.end - currentShift.start + 1)) * 100}%`
+                                            }}></div>
+                                        ))}
+                                        <div
+                                            className="h-6 rounded-md bg-slate-100 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50"
+                                            style={{
+                                                marginLeft: `${(idx % 4) * 15 + 10}%`,
+                                                width: `${20 + (idx % 3) * 12}%`
+                                            }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            ))
+                        ) : filteredTimelineData.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                                <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center text-indigo-500 mb-4 shadow-sm">
+                                    <Users size={32} />
+                                </div>
+                                <h3 className="text-base font-bold text-slate-800 dark:text-github-dark-text mb-1">
+                                    No Employees Found
+                                </h3>
+                                <p className="text-xs text-slate-500 dark:text-github-dark-muted max-w-md mb-4">
+                                    {(propSearchQuery || (selectedDepartment && selectedDepartment !== 'All' && selectedDepartment !== 'All Departments') || (selectedShift && selectedShift !== 'All Shifts') || (selectedDesignation && selectedDesignation !== 'All' && selectedDesignation !== 'All Designations') || (selectedEmployee && selectedEmployee !== 'All Employees' && selectedEmployee !== 'All'))
+                                        ? "No employees match your active filters. Try clearing filters or searching with a different term."
+                                        : "No active employee records were found for the selected date range."}
+                                </p>
+                                {(propSearchQuery || (selectedDepartment && selectedDepartment !== 'All' && selectedDepartment !== 'All Departments') || (selectedShift && selectedShift !== 'All Shifts') || (selectedDesignation && selectedDesignation !== 'All' && selectedDesignation !== 'All Designations') || (selectedEmployee && selectedEmployee !== 'All Employees' && selectedEmployee !== 'All')) && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedDepartment(isEmbeddedInAdmin ? "All" : "All Departments");
+                                            setSelectedDesignation(isEmbeddedInAdmin ? "All" : "All Designations");
+                                            setSelectedShift("All Shifts");
+                                            setSelectedEmployee(isEmbeddedInAdmin ? "All" : "All Employees");
+                                        }}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
+                                    >
+                                        Reset Filters
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            filteredTimelineData.map(user => {
+                                const summaryKey = buildSummaryKey(user.userId);
+                                const summaryState = summaryByQuery[summaryKey];
 
-                            const getVisibleWindow = (act) => {
-                                let actStart = act.start;
-                                let actEnd = act.end;
+                                const allDatesInRange = enumerateDates(dateRange.start, dateRange.end);
+                                const isSingleDay = (dateRange.start === dateRange.end);
 
-                                if (currentShift.end > 24) {
-                                    if (actStart < currentShift.start) actStart += 24;
-                                    if (actEnd < currentShift.start) actEnd += 24;
-                                    if (actEnd < actStart) actEnd += 24;
-                                }
-
-                                if (actEnd <= currentShift.start || actStart >= currentShift.end + 1) return null;
-
-                                const clampedStart = Math.max(actStart, currentShift.start);
-                                const clampedEnd = Math.min(actEnd, currentShift.end + 1);
-                                if (clampedEnd <= clampedStart) return null;
-
-                                return { start: clampedStart, end: clampedEnd };
-                            };
-
-                            const dayLayout = (() => {
                                 const activitiesByDate = {};
-                                user.activities.forEach((act) => {
+                                (user.activities || []).forEach((act) => {
                                     const d = act.activityDate || user.date || dateRange.start;
                                     if (!activitiesByDate[d]) activitiesByDate[d] = [];
                                     activitiesByDate[d].push(act);
                                 });
 
-                                const layout = [];
-                                const placements = {};
-                                let runningTop = 0;
+                                let dayDates;
+                                if (isSingleDay) {
+                                    dayDates = [user.date || user.dateStart || dateRange.start];
+                                } else if (selectedDayFilter && selectedDayFilter !== 'all') {
+                                    dayDates = [selectedDayFilter];
+                                } else {
+                                    // In multi-day mode, only render days that actually have activities or attendance/holiday/absent!
+                                    const activeDates = allDatesInRange.filter(d =>
+                                        (activitiesByDate[d] && activitiesByDate[d].length > 0) ||
+                                        (user.holidayDates && user.holidayDates.includes(d)) ||
+                                        (user.absentDates && user.absentDates.includes(d))
+                                    );
+                                    dayDates = activeDates.length > 0 ? activeDates : [dateRange.end];
+                                }
 
-                                const laneHeight = timeMode === 'day' ? 24 : 22;
-                                const laneGap = 4;
-                                const dayTopPadding = 16;
-                                const dayBottomPadding = 8;
-                                const minDayHeight = timeMode === 'day' ? 72 : 36;
+                                const getVisibleWindow = (act) => {
+                                    let actStart = act.start;
+                                    let actEnd = act.end;
 
-                                dayDates.forEach((date) => {
-                                    const dayActs = (activitiesByDate[date] || []).slice();
-                                    const sortable = dayActs
-                                        .map((act) => ({ act, window: getVisibleWindow(act) }))
-                                        .filter((item) => Boolean(item.window))
-                                        .sort((a, b) => {
-                                            if (a.window.start === b.window.start) {
-                                                return (a.window.end - a.window.start) - (b.window.end - b.window.start);
+                                    if (currentShift.end > 24) {
+                                        if (actStart < currentShift.start) actStart += 24;
+                                        if (actEnd < currentShift.start) actEnd += 24;
+                                        if (actEnd < actStart) actEnd += 24;
+                                    }
+
+                                    if (actEnd <= currentShift.start || actStart >= currentShift.end + 1) return null;
+
+                                    const clampedStart = Math.max(actStart, currentShift.start);
+                                    const clampedEnd = Math.min(actEnd, currentShift.end + 1);
+                                    if (clampedEnd <= clampedStart) return null;
+
+                                    return { start: clampedStart, end: clampedEnd };
+                                };
+
+                                const dayLayout = (() => {
+                                    const layout = [];
+                                    const placements = {};
+                                    let runningTop = 0;
+
+                                    const laneHeight = (timeMode === 'day' && isSingleDay) ? 24 : 22;
+                                    const laneGap = 4;
+                                    const dayTopPadding = (!isSingleDay && dayDates.length > 1) ? 20 : 16;
+                                    const dayBottomPadding = 8;
+                                    const minDayHeight = (timeMode === 'day' && isSingleDay) ? 72 : 36;
+
+                                    dayDates.forEach((date) => {
+                                        const dayActs = (activitiesByDate[date] || []).slice();
+                                        const sortable = dayActs
+                                            .map((act) => ({ act, window: getVisibleWindow(act) }))
+                                            .filter((item) => Boolean(item.window))
+                                            .sort((a, b) => {
+                                                if (a.window.start === b.window.start) {
+                                                    return (a.window.end - a.window.start) - (b.window.end - b.window.start);
+                                                }
+                                                return a.window.start - b.window.start;
+                                            });
+
+                                        const laneEndTimes = [];
+
+                                        sortable.forEach(({ act, window }) => {
+                                            let laneIdx = laneEndTimes.findIndex((laneEnd) => laneEnd <= window.start);
+                                            if (laneIdx === -1) {
+                                                laneIdx = laneEndTimes.length;
+                                                laneEndTimes.push(window.end);
+                                            } else {
+                                                laneEndTimes[laneIdx] = window.end;
                                             }
-                                            return a.window.start - b.window.start;
+                                            placements[act.id] = { laneIdx, window, date };
                                         });
 
-                                    const laneEndTimes = [];
+                                        const laneCount = Math.max(1, laneEndTimes.length);
+                                        const dayHeight = Math.max(minDayHeight, dayTopPadding + laneCount * (laneHeight + laneGap) + dayBottomPadding);
 
-                                    sortable.forEach(({ act, window }) => {
-                                        let laneIdx = laneEndTimes.findIndex((laneEnd) => laneEnd <= window.start);
-                                        if (laneIdx === -1) {
-                                            laneIdx = laneEndTimes.length;
-                                            laneEndTimes.push(window.end);
-                                        } else {
-                                            laneEndTimes[laneIdx] = window.end;
-                                        }
-                                        placements[act.id] = { laneIdx, window, date };
+                                        layout.push({
+                                            date,
+                                            top: runningTop,
+                                            height: dayHeight,
+                                            laneHeight,
+                                            laneGap,
+                                            dayTopPadding,
+                                            laneCount,
+                                        });
+                                        runningTop += dayHeight;
                                     });
 
-                                    const laneCount = Math.max(1, laneEndTimes.length);
-                                    const dayHeight = Math.max(minDayHeight, dayTopPadding + laneCount * (laneHeight + laneGap) + dayBottomPadding);
-
-                                    layout.push({
-                                        date,
-                                        top: runningTop,
-                                        height: dayHeight,
-                                        laneHeight,
-                                        laneGap,
-                                        dayTopPadding,
-                                        laneCount,
-                                    });
-                                    runningTop += dayHeight;
-                                });
-
-                                return {
-                                    days: layout,
-                                    placements,
-                                    rowHeight: Math.max(96, runningTop || 96),
-                                };
-                            })();
+                                    return {
+                                        days: layout,
+                                        placements,
+                                        rowHeight: Math.max(isSingleDay ? 80 : 44, runningTop || 44),
+                                    };
+                                })();
 
                             const getCategoryStyles = (category) => {
                                 const cat = (category || '').toUpperCase();
@@ -867,23 +1227,23 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                 <div key={user.id}>
                                     <div className="flex hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
                                         {/* User Info Column */}
-                                        <div className="w-48 p-4 flex flex-col justify-center border-r border-slate-100 dark:border-github-dark-border flex-shrink-0 sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-slate-800 z-30">
-                                            <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text truncate">{user.name}</span>
+                                        <div className="w-48 p-3 flex flex-col justify-center border-r border-slate-100 dark:border-github-dark-border flex-shrink-0 sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-slate-800 z-30">
+                                            <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text truncate" title={user.name}>{user.name}</span>
                                             <div className="flex items-center gap-1.5 mt-0.5">
-                                                <span className="text-[10px] font-mono bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-github-dark-muted">
+                                                <span className="text-[10px] font-mono bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 whitespace-nowrap">
                                                     {formatDateDisplay(user)}
                                                 </span>
                                             </div>
                                             {user.holidayDates && user.holidayDates.length > 0 ? (
-                                                <span className="text-[10px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
+                                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Holiday {user.holidayDates.length > 1 ? `(${user.holidayDates.length})` : ''}
                                                 </span>
                                             ) : user.absentDates && user.absentDates.length > 0 ? (
-                                                <span className="text-[10px] text-red-500 font-bold mt-1 flex items-center gap-1">
+                                                <span className="text-[10px] text-red-500 dark:text-red-400 font-bold mt-1 flex items-center gap-1">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div> Absent {user.absentDates.length > 1 ? `(${user.absentDates.length})` : ''}
                                                 </span>
                                             ) : user.activities.length === 0 && (
-                                                <span className="text-[10px] text-slate-400 font-medium mt-1 flex items-center gap-1">
+                                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-1 flex items-center gap-1">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div> No DAR
                                                 </span>
                                             )}
@@ -901,7 +1261,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
                                             <button
                                                 onClick={() => handleSummaryClick(user)}
-                                                className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors w-fit border border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400"
+                                                className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors w-fit border border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400 cursor-pointer"
                                             >
                                                 <FileText size={12} />
                                                 View Summary
@@ -921,22 +1281,29 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                             {/* Activities Bars or STATUS OVERLAY */}
                                             <div className="relative w-full" style={{ minHeight: `${dayLayout.rowHeight}px` }}>
                                                 {/* Day separators and labels */}
-                                                {dayLayout.days.map((day, idx) => (
+                                                {!isSingleDay && dayLayout.days.map((day, idx) => (
                                                     <React.Fragment key={day.date}>
                                                         {idx < dayLayout.days.length - 1 && (
                                                             <div
-                                                                className="absolute w-full border-b border-slate-300 dark:border-github-dark-border"
+                                                                className="absolute w-full border-b border-slate-200 dark:border-github-dark-border"
                                                                 style={{ top: `${day.top + day.height}px` }}
                                                             ></div>
                                                         )}
                                                         <div
-                                                            className="absolute text-[9px] font-bold text-slate-400 dark:text-github-dark-muted px-1"
-                                                            style={{ top: `${day.top + 2}px`, left: '4px' }}
+                                                            className="absolute z-10 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-white/95 dark:bg-[#161b22]/95 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#30363d] shadow-xs backdrop-blur-xs"
+                                                            style={{ top: `${day.top + 3}px`, left: '6px' }}
                                                         >
-                                                            {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                            {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })}
                                                         </div>
                                                     </React.Fragment>
                                                 ))}
+
+                                                {/* Empty state for user with 0 activities in range */}
+                                                {user.activities.length === 0 && (
+                                                    <div className="absolute inset-0 flex items-center pl-6 text-xs text-slate-400 dark:text-slate-500 italic pointer-events-none select-none">
+                                                        No activities logged for this period
+                                                    </div>
+                                                )}
 
                                                 {/* 1. Holiday Overlay (Background) */}
                                                 {user.isHoliday && (
@@ -956,8 +1323,8 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                                     <div className="absolute inset-x-0 inset-y-1 bg-red-50/40 dark:bg-red-900/15 border border-red-100 dark:border-red-800/30 rounded-lg pointer-events-none z-0"></div>
                                                 )}
 
-                                                {/* 3. Time-In Marker (Z-Index 20) */}
-                                                {user.attendance?.hasTimedIn && (
+                                                {/* 4. Time-In Marker (Only in single-day view so it doesn't span across multiple days) */}
+                                                {isSingleDay && user.attendance?.hasTimedIn && (
                                                     <div
                                                         className="absolute inset-y-0 border-l-2 border-emerald-500 z-20 group/marker"
                                                         style={{
@@ -998,7 +1365,16 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                                                 top: `${topPx}px`,
                                                                 height: `${dayMeta.laneHeight}px`
                                                             }}
-                                                            title={`${act.title} (${act.category})\n${formatTime(act.start)} - ${formatTime(act.end)}`}
+                                                            onMouseEnter={(e) => {
+                                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                                setHoveredTask({
+                                                                    act,
+                                                                    user,
+                                                                    date: placement.date,
+                                                                    rect
+                                                                });
+                                                            }}
+                                                            onMouseLeave={() => setHoveredTask(null)}
                                                         >
                                                             <div className="w-full overflow-hidden">
                                                                 <span className={`block text-[11px] font-semibold truncate leading-[1.1] ${textClass}`}>{act.title}</span>
@@ -1015,9 +1391,79 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
                                 </div>
                             );
-                        })}
+                        })
+                    )}
                     </div>
                 </div>
+
+                {hoveredTask && createPortal(
+                    <div
+                        className="fixed z-[99999] pointer-events-none transition-all duration-100 ease-out drop-shadow-2xl"
+                        style={{
+                            position: 'fixed',
+                            top: `${hoveredTask.rect.top < 160 ? hoveredTask.rect.bottom + 8 : hoveredTask.rect.top - 8}px`,
+                            left: `${Math.min(Math.max(16, hoveredTask.rect.left + (hoveredTask.rect.width / 2) - 145), window.innerWidth - 306)}px`,
+                            transform: hoveredTask.rect.top < 160 ? 'none' : 'translateY(-100%)',
+                            width: '290px',
+                            pointerEvents: 'none'
+                        }}
+                    >
+                        <div className="bg-white/95 dark:bg-[#161b22]/95 text-slate-800 dark:text-white backdrop-blur-md border border-slate-200 dark:border-[#30363d] rounded-xl p-3.5 text-xs shadow-2xl relative">
+                            {/* Header: Category Badge & Duration */}
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                    hoveredTask.act.category === 'MEETING' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700/50' :
+                                    hoveredTask.act.category === 'EVENT' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700/50' :
+                                    hoveredTask.act.category === 'BREAK' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700/50' :
+                                    'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/50'
+                                }`}>
+                                    {hoveredTask.act.category || 'TASK'}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-600 dark:text-slate-300 font-semibold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/60">
+                                    {formatDurationBetween(hoveredTask.act.start, hoveredTask.act.end)}
+                                </span>
+                            </div>
+
+                            {/* Full Task Name */}
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-snug break-words mb-2.5">
+                                {hoveredTask.act.title}
+                            </h4>
+
+                            {/* Timing, Date, Employee */}
+                            <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-[#30363d] pt-2">
+                                <div className="flex items-center gap-2">
+                                    <Clock size={13} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                    <span className="font-semibold text-slate-800 dark:text-slate-100">
+                                        {formatTime(hoveredTask.act.start)} – {formatTime(hoveredTask.act.end)}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Calendar size={13} className="text-slate-400 shrink-0" />
+                                    <span className="font-medium text-slate-600 dark:text-slate-300">{formatPlatformDate(hoveredTask.date)}</span>
+                                </div>
+                                {hoveredTask.user?.name && (
+                                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                                        <Users size={13} className="text-slate-400 shrink-0" />
+                                        <span className="font-medium truncate">{hoveredTask.user.name}</span>
+                                    </div>
+                                )}
+                                {hoveredTask.act.location && (
+                                    <div className="text-slate-500 dark:text-slate-400 text-[10px] pl-5">
+                                        📍 {hoveredTask.act.location}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Description if present */}
+                            {hoveredTask.act.description && (
+                                <div className="text-[10.5px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-100 dark:border-slate-700/60 mt-2 italic line-clamp-3">
+                                    {hoveredTask.act.description}
+                                </div>
+                            )}
+                        </div>
+                    </div>,
+                    document.body
+                )}
 
                 {createPortal(
                     <EmployeeInsightSidebar

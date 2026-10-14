@@ -1,4 +1,5 @@
 import React, { useMemo, useRef } from 'react';
+import { formatTaskDuration } from '../../utils/darAdminMetrics';
 
 const MultiDayTimeline = ({
     tasks,
@@ -340,17 +341,18 @@ const MultiDayTimeline = ({
                                                         height: `${itemHeight - 2}px`, // -2 for slight gap between stacked items
                                                         ...extraStyle
                                                     }}
-                                                    title={`${task.title} (${task.startTime} - ${task.endTime}) ${task.status === 'PLANNED' ? '[PLANNED]' : ''}`}
+                                                    title={`${task.title} (${task.startTime} - ${task.endTime} • ${formatTaskDuration(null, task.startTime, task.endTime)}) ${task.status === 'PLANNED' ? '[PLANNED]' : ''}`}
                                                 >
                                                     {/* Title (Dynamic Size) */}
                                                     <div className={`font-bold leading-tight truncate ${maxLanes > 1 || width < 60 ? 'text-[10px]' : 'text-sm'}`}>
                                                         {task.title || "(No Title)"}
                                                     </div>
 
-                                                    {/* Time (Hide if narrow) */}
+                                                    {/* Time & Duration */}
                                                     {itemHeight > 35 && width > 60 && (
-                                                        <div className={`opacity-80 mt-1.5 font-medium flex items-center gap-1 ${maxLanes > 1 ? 'text-[9px]' : 'text-[10px]'}`}>
+                                                        <div className={`opacity-80 mt-1.5 font-medium flex items-center gap-1 flex-wrap ${maxLanes > 1 ? 'text-[9px]' : 'text-[10px]'}`}>
                                                             <span>{task.startTime} - {task.endTime}</span>
+                                                            <span className="font-bold opacity-90">({formatTaskDuration(null, task.startTime, task.endTime)})</span>
                                                         </div>
                                                     )}
 
