@@ -137,7 +137,7 @@ CREATE TABLE `attn_daily_summary_v2` (
   `late_minutes` int NOT NULL DEFAULT '0',
   `late_reason` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `overtime_hours` decimal(5,2) NOT NULL DEFAULT '0.00',
-  `status` enum('PRESENT','HALF_DAY','ABSENT','MISSED_PUNCH','ON_LEAVE','WEEKEND','HOLIDAY') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ABSENT',
+  `status` enum('PRESENT','HALF_DAY','ABSENT','MISSED_PUNCH','ON_LEAVE','WEEK_OFF','HOLIDAY') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ABSENT',
   `remarks` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

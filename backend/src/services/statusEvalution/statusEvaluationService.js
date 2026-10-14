@@ -663,7 +663,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
  * Priority (highest → lowest):
  *   1. National/org holiday   → HOLIDAY
  *   2. Week-off policy        → WEEK_OFF (or HOLIDAY for Sunday)
- *   3. Approved leave         → LEAVE
+ *   3. Approved leave         → ON_LEAVE
  *   4. Half-day week-off      → ABSENT (employee was expected but didn't show)
  *   5. Regular working day    → ABSENT
  *
@@ -707,7 +707,9 @@ export function resolveNoShowStatus({ dateStr, rules, holiday, leave }) {
 
     // 5. Approved leave (only overrides ABSENT, not WEEK_OFF / HOLIDAY)
     if (status === 'ABSENT' && leave) {
-        return { status: 'LEAVE', remarks: `${leave.leave_type} (${leave.pay_type})` };
+        const typeName = leave.leave_type || leave.reason || 'Approved Leave';
+        const payStr = leave.pay_type ? ` (${leave.pay_type})` : '';
+        return { status: 'ON_LEAVE', remarks: `${typeName}${payStr}` };
     }
 
     return { status, remarks };
