@@ -46,13 +46,14 @@ import {
     Edit3
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
-import { getLocalDateString, formatLocalTimeString, formatPlatformDate } from '../../utils/dateUtils';
+import { getLocalDateString, formatLocalTimeString, formatPlatformDate, formatPlatformDateTime } from '../../utils/dateUtils';
 import { toast } from 'react-toastify';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import AttendancePermissionsBanner from './components/AttendancePermissionsBanner';
 import CheckpointModal from './components/CheckpointModal';
 import { requestCameraAccess } from '../../utils/permissionUtils';
 import MonthPicker from '../../components/MonthPicker';
+import AuditTrailTimeline from '../../components/AuditTrailTimeline';
 import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
 import {
     AreaChart,
@@ -4278,13 +4279,24 @@ const MobileAttendancePage = () => {
                                     <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50 border-t-2 border-t-indigo-500">
                                         <span className="block text-[10px] font-semibold text-indigo-500 mb-1">Reviewer Decision</span>
                                         <p className="text-xs text-slate-700 dark:text-slate-300 font-normal">
-                                            {selectedRequest.review_comments || selectedRequest.admin_comment || "No reviewer comments provided."}
+                                            {(() => {
+                                                const rawRemarks = selectedRequest.review_comments || selectedRequest.admin_comment;
+                                                if (!rawRemarks) return "No reviewer comments provided.";
+                                                if (/^approved by (?:administrator|administration)$/i.test(rawRemarks.trim())) {
+                                                    const revName = selectedRequest.reviewer_name || selectedRequest.reviewed_by_name;
+                                                    return revName ? `Approved by ${revName}` : rawRemarks;
+                                                }
+                                                return rawRemarks;
+                                            })()}
                                         </p>
                                         <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-github-dark-border/50 text-[10px] text-slate-400 font-normal">
                                             Reviewed on {selectedRequest.reviewed_at ? formatPlatformDate(selectedRequest.reviewed_at) : 'N/A'}
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Section: Audit Trail & History */}
+                                <AuditTrailTimeline record={selectedRequest} compact={true} currentUserId={user?.user_id} isEmployee={true} />
                             </div>
 
                             {/* Modal Fixed Footer */}

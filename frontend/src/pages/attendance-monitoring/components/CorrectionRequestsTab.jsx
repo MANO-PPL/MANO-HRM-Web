@@ -28,6 +28,7 @@ import ProfilePictureModal from '../../../components/modals/ProfilePictureModal'
 import { attendanceService } from '../../../services/attendanceService';
 import { toast } from 'react-toastify';
 import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
+import { useAuth } from '../../../context/AuthContext';
 
 const CorrectionRequestsTab = ({
     correctionRequests = [],
@@ -44,6 +45,7 @@ const CorrectionRequestsTab = ({
     setPreviewImage,
     avatarTimestamp = ''
 }) => {
+    const { user } = useAuth();
     // Local Search & Filter State
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -277,9 +279,14 @@ const CorrectionRequestsTab = ({
                 JSON.stringify(currentSessions.map(s => ({ in: s.time_in, out: s.time_out })))
             );
 
+            const adminName = user?.user_name || user?.name;
+            const defaultApproveComment = isModified
+                ? 'Approved with manual override'
+                : (adminName ? `Approved by ${adminName}` : 'Approved by Administrator');
+
             const comment = reviewComment.trim()
                 ? reviewComment.trim()
-                : (isModified ? 'Approved with manual override' : 'Approved by administrator');
+                : defaultApproveComment;
 
             await attendanceService.updateCorrectionStatus(reqId, 'approved', comment, isModified ? { sessions: currentSessions } : {});
 
@@ -727,7 +734,15 @@ const CorrectionRequestsTab = ({
                                         Admin Remarks
                                     </span>
                                     <p className="text-sm text-slate-700 dark:text-slate-300 font-normal mt-0.5">
-                                        "{selectedRequestData.review_comments || "No remarks provided."}"
+                                        "{(() => {
+                                            const rawRemarks = selectedRequestData.review_comments;
+                                            if (!rawRemarks) return "No remarks provided.";
+                                            if (/^approved by (?:administrator|administration)$/i.test(rawRemarks.trim())) {
+                                                const revName = selectedRequestData.reviewer_name || selectedRequestData.reviewed_by_name || user?.user_name;
+                                                return revName ? `Approved by ${revName}` : rawRemarks;
+                                            }
+                                            return rawRemarks;
+                                        })()}"
                                     </p>
                                 </div>
                             )}

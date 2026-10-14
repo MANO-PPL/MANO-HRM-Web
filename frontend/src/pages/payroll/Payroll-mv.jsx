@@ -34,6 +34,7 @@ import {
     HelpCircle
 } from 'lucide-react';
 import payrollService from '../../services/payrollService';
+import { formatPlatformDateTime } from '../../utils/dateUtils';
 
 // =============================================================================
 // Helper Utilities & Formatting
@@ -1086,12 +1087,12 @@ const PayrollMobile = () => {
                                 {auditLogs.map((log, idx) => {
                                     const actionColors = getAuditActionColor(log.action);
                                     const dateStr = log.timestamp || log.created_at || new Date().toISOString();
-                                    const formattedTime = new Date(dateStr).toLocaleString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                    });
+                                    const formattedTime = formatPlatformDateTime(dateStr);
+                                    let detailsText = log.details || log.message || 'Audit action recorded';
+                                    if (typeof detailsText === 'string' && /^approved by (?:administrator|administration)$/i.test(detailsText.trim())) {
+                                        const author = log.performedByName && !['admin', 'administrator', 'system'].includes(String(log.performedByName).toLowerCase().trim()) ? log.performedByName : null;
+                                        if (author) detailsText = `Approved by ${author}`;
+                                    }
 
                                     return (
                                         <div
@@ -1111,7 +1112,7 @@ const PayrollMobile = () => {
                                                     </h5>
                                                 )}
                                                 <p className="text-[10px] text-slate-600 dark:text-slate-300 line-clamp-2">
-                                                    {log.details || log.message || 'Audit action recorded'}
+                                                    {detailsText}
                                                 </p>
                                                 <div className="flex items-center gap-3 text-[9px] text-slate-400 pt-0.5">
                                                     <span className="flex items-center gap-1">

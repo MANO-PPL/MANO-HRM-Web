@@ -18,7 +18,8 @@ import { attendanceService, attendanceCacheData } from '../../services/attendanc
 import DatePicker from '../../components/DatePicker';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
-import { formatPlatformDate } from '../../utils/dateUtils';
+import { formatPlatformDate, formatPlatformDateTime } from '../../utils/dateUtils';
+import AuditTrailTimeline from '../../components/AuditTrailTimeline';
 import {
     PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, AreaChart, Area
@@ -271,8 +272,7 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
 const formatHeaderDate = (dateStr) => {
     if (!dateStr) return '';
     try {
-        const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
-        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+        return formatPlatformDate(dateStr);
     } catch (e) {
         return dateStr;
     }
@@ -1886,6 +1886,7 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
 };
 
 const RequestDetailModal = ({ request, onClose, onUpdate }) => {
+    const { user: currentUser } = useAuth();
     const [comment, setComment] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -1911,7 +1912,13 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
     const handleAction = async (status) => {
         setIsProcessing(true);
         try {
-            await attendanceService.updateCorrectionStatus(request.acr_id || request.id, status, comment);
+            const adminName = currentUser?.user_name || currentUser?.name;
+            const defaultApproveComment = adminName ? `Approved by ${adminName}` : 'Approved by Administrator';
+            const effectiveComment = comment.trim()
+                ? comment.trim()
+                : (status === 'approved' ? defaultApproveComment : '');
+
+            await attendanceService.updateCorrectionStatus(request.acr_id || request.id, status, effectiveComment);
             toast.success(`Request ${status} successfully`);
             onUpdate();
             onClose();
@@ -2012,10 +2019,21 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
                                 </span>
                             </div>
                             <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                                {request.admin_comment || "No comment provided."}
+                                {(() => {
+                                    const rawRemarks = request.review_comments || request.admin_comment;
+                                    if (!rawRemarks) return "No comment provided.";
+                                    if (/^approved by (?:administrator|administration)$/i.test(rawRemarks.trim())) {
+                                        const revName = request.reviewer_name || request.reviewed_by_name || currentUser?.user_name;
+                                        return revName ? `Approved by ${revName}` : rawRemarks;
+                                    }
+                                    return rawRemarks;
+                                })()}
                             </p>
                         </div>
                     )}
+
+                    {/* Section: Audit Trail & History */}
+                    <AuditTrailTimeline record={request} compact={true} />
                 </div>
 
                 {request.status?.toUpperCase() === 'PENDING' && (

@@ -2319,7 +2319,12 @@ const Attendance = () => {
                 await attendanceService.submitCorrectionRequest(formData);
             }
 
-            await attendanceService.updateCorrectionStatus(reqId, 'approved', isModified ? 'Approved with manual override' : 'Approved by administrator');
+            const adminName = user?.user_name || user?.name;
+            const defaultApproveComment = isModified
+                ? 'Approved with manual override'
+                : (adminName ? `Approved by ${adminName}` : 'Approved by Administrator');
+
+            await attendanceService.updateCorrectionStatus(reqId, 'approved', defaultApproveComment);
             toast.success(isModified ? "Request updated with manual override and approved!" : "Request approved successfully!");
 
             setIsOverrideMode(false);

@@ -863,7 +863,15 @@ const AttendanceCorrectionTab = ({
                                                         </span>
                                                     </div>
                                                     <p className="text-base text-slate-800 dark:text-slate-200 font-medium leading-relaxed">
-                                                        "{selectedRequest.review_comments || "No remarks provided."}"
+                                                        "{(() => {
+                                                            const rawRemarks = selectedRequest.review_comments;
+                                                            if (!rawRemarks) return "No remarks provided.";
+                                                            if (/^approved by (?:administrator|administration)$/i.test(rawRemarks.trim())) {
+                                                                const revName = selectedRequest.reviewer_name || selectedRequest.reviewed_by_name;
+                                                                return revName ? `Approved by ${revName}` : rawRemarks;
+                                                            }
+                                                            return rawRemarks;
+                                                        })()}"
                                                     </p>
                                                 </div>
                                             )}
