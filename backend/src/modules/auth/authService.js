@@ -8,6 +8,7 @@ import * as sessionService from './sessionService.js';
 import { evaluateOrgStatus } from '../organisations/orgAccessPolicy.js';
 import OtpService from './OtpService.js';
 import { sendEmail } from './emailService.js';
+import { AUTH_ERROR_CODES } from './authErrorCodes.js';
 
 // ==========================================
 // CONFIGURATION & TOKEN SECRETS
@@ -66,14 +67,14 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
         .orWhere('core_users.phone_no', userInput)
         .first();
 
-    if (!user) throw new AppError('User not found', 401);
+    if (!user) throw new AppError('User not found', 401, AUTH_ERROR_CODES.INVALID_CREDENTIALS);
 
     // Check Organization Status (Bypass for admin users so they can renew subs, unless pending_deletion/deleted)
     let isOrgExpired = false;
     let orgStatus = 'active';
     if (user.org_id) {
         if (!user.org_status || user.org_status === 'pending_deletion') {
-            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403);
+            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403, AUTH_ERROR_CODES.ORG_DELETED);
         }
         
         const evaluated = evaluateOrgStatus({
@@ -85,15 +86,15 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
         orgStatus = evaluated.status;
 
         if (orgStatus !== 'active' && user.user_type !== 'admin') {
-            throw new AppError(`Login blocked: Your organization account is currently ${orgStatus}. Please contact support.`, 403);
+            throw new AppError(`Login blocked: Your organization account is currently ${orgStatus}. Please contact support.`, 403, AUTH_ERROR_CODES.ORG_INACTIVE);
         }
     }
 
-    if (user.is_deleted) throw new AppError('Your account has been deleted. Please contact support.', 403);
-    if (!user.is_active) throw new AppError('Your account is inactive. Please contact HR.', 403);
+    if (user.is_deleted) throw new AppError('Your account has been deleted. Please contact support.', 403, AUTH_ERROR_CODES.ACCOUNT_DELETED);
+    if (!user.is_active) throw new AppError('Your account is inactive. Please contact HR.', 403, AUTH_ERROR_CODES.ACCOUNT_INACTIVE);
 
     const isMatch = await bcrypt.compare(password, user.user_password);
-    if (!isMatch) throw new AppError('Incorrect Password', 401);
+    if (!isMatch) throw new AppError('Incorrect Password', 401, AUTH_ERROR_CODES.INVALID_CREDENTIALS);
 
     const isForcePasswordChange = user.force_password_change === 1 || user.force_password_change === '1' || user.force_password_change === true || user.force_password_change === 'true';
 
@@ -139,6 +140,7 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
     return {
         accessToken,
         refreshToken, // To be set in cookie by Controller
+        sessionId,
         user: {
             id: user.user_id,
             user_code: user.user_code,
@@ -225,8 +227,9 @@ export const getCurrentUser = async (userId, userType) => {
 
 export const logoutUser = async (refreshToken) => {
     if (refreshToken) {
-        await sessionService.revokeSession({ token: refreshToken, reason: 'logout' });
+        return await sessionService.revokeSession({ token: refreshToken, reason: 'logout' });
     }
+    return null;
 };
 
 
@@ -236,11 +239,11 @@ export const logoutUser = async (refreshToken) => {
 
 export const authenticateSuperAdmin = async (email, password, reqInfo) => {
     const admin = await attendanceDB('core_super_admins').where('email', email).first();
-    if (!admin) throw new AppError('Invalid credentials', 401);
-    if (!admin.is_active) throw new AppError('Your account is inactive.', 403);
+    if (!admin) throw new AppError('Invalid credentials', 401, AUTH_ERROR_CODES.INVALID_CREDENTIALS);
+    if (!admin.is_active) throw new AppError('Your account is inactive.', 403, AUTH_ERROR_CODES.ADMIN_INACTIVE);
 
     const isMatch = await bcrypt.compare(password, admin.password_hash);
-    if (!isMatch) throw new AppError('Invalid credentials', 401);
+    if (!isMatch) throw new AppError('Invalid credentials', 401, AUTH_ERROR_CODES.INVALID_CREDENTIALS);
 
     const tokenPayload = {
         user_id: admin.id,
@@ -285,14 +288,14 @@ export const authenticateSuperAdmin = async (email, password, reqInfo) => {
 // ==========================================
 
 export const refreshAuthTokens = async (refreshToken, reqInfo) => {
-    if (!refreshToken) throw new AppError("No refresh token provided", 401, "NO_REFRESH_TOKEN");
+    if (!refreshToken) throw new AppError("No refresh token provided", 401, AUTH_ERROR_CODES.NO_REFRESH_TOKEN);
 
     // SuperAdmin uses stateless JWT refresh tokens with sliding 30-min window
     try {
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
         if (decoded.user_type === 'super_admin_refresh') {
             const admin = await attendanceDB('core_super_admins').where('id', decoded.id).first();
-            if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403, "ADMIN_INACTIVE");
+            if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403, AUTH_ERROR_CODES.ADMIN_INACTIVE);
 
             const tokenPayload = {
                 user_id: admin.id,
@@ -302,30 +305,44 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
             };
             const newAccessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
             const newRefreshToken = jwt.sign({ id: admin.id, user_type: 'super_admin_refresh' }, process.env.JWT_REFRESH_SECRET, { expiresIn: SUPER_ADMIN_REFRESH_TOKEN_EXPIRY });
-            return { accessToken: newAccessToken, refreshToken: newRefreshToken, rememberMe: false, isSuperAdmin: true };
+            return { accessToken: newAccessToken, refreshToken: newRefreshToken, sessionId: null, rememberMe: false, isSuperAdmin: true };
         }
     } catch (err) {
-        if (err.name === 'TokenExpiredError') throw new AppError("Session expired. Please re-login.", 401, "SESSION_EXPIRED");
+        if (err.name === 'TokenExpiredError') throw new AppError("Session expired. Please re-login.", 401, AUTH_ERROR_CODES.SESSION_EXPIRED);
         // Non-JWT tokens from regular users fall through to DB session validation
     }
 
     // Standard Users: Database-backed session validation
     const result = await sessionService.validateSession(refreshToken);
 
-    if (!result) throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
-    if (result.error) throw new AppError("Your account is inactive or has been deleted. Please contact HR.", 401, "ACCOUNT_INACTIVE");
+    if (!result) throw new AppError("Invalid refresh token", 401, AUTH_ERROR_CODES.INVALID_REFRESH_TOKEN);
+    if (result.error === 'SESSION_REVOKED') {
+        throw new AppError("Session has been revoked", 401, AUTH_ERROR_CODES.SESSION_REVOKED);
+    }
+    if (result.error === 'SESSION_EXPIRED') {
+        throw new AppError("Session expired. Please re-login.", 401, AUTH_ERROR_CODES.SESSION_EXPIRED);
+    }
+    if (result.error === 'ACCOUNT_DELETED') {
+        throw new AppError("Your account has been deleted. Please contact HR.", 401, AUTH_ERROR_CODES.ACCOUNT_DELETED);
+    }
+    if (result.error === 'ACCOUNT_INACTIVE') {
+        throw new AppError("Your account is inactive. Please contact HR.", 401, AUTH_ERROR_CODES.ACCOUNT_INACTIVE);
+    }
+    if (result.error) {
+        throw new AppError("Your account is inactive or has been deleted. Please contact HR.", 401, AUTH_ERROR_CODES.ACCOUNT_INACTIVE);
+    }
 
     const { user, session } = result;
 
     if (user.org_id) {
         const org = await attendanceDB('core_organizations').where('org_id', user.org_id).first();
         if (!org || org.status === 'pending_deletion') {
-            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403, "ORG_DELETED");
+            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403, AUTH_ERROR_CODES.ORG_DELETED);
         }
 
         const { status: orgStatus } = evaluateOrgStatus(org);
         if (orgStatus !== 'active' && user.user_type !== 'admin') {
-            throw new AppError(`Access Denied: Your organization account is currently ${orgStatus}.`, 403, "ORG_INACTIVE");
+            throw new AppError(`Access Denied: Your organization account is currently ${orgStatus}.`, 403, AUTH_ERROR_CODES.ORG_INACTIVE);
         }
     }
 
@@ -348,6 +365,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
     return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
+        sessionId: session.id,
         rememberMe: session?.remember_me == 1 || session?.remember_me === true
     };
 };

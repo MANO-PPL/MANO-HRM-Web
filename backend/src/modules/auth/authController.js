@@ -4,6 +4,8 @@ import AppError from '../../utils/AppError.js';
 import { attendanceDB } from '../../config/database.js';
 import bcrypt from 'bcrypt';
 import { extractDeviceInfo } from '../../utils/deviceParser.js';
+import { getClientType, isMobileClient, logAuthTransport } from './clientType.js';
+import { AUTH_ERROR_CODES } from './authErrorCodes.js';
 
 // ==========================================
 // CONFIGURATION & HELPERS
@@ -13,11 +15,23 @@ const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 Days (Stand
 const SUPER_ADMIN_COOKIE_MAX_AGE = 30 * 60 * 1000;             // 30 Minutes (SuperAdmin AFK / Inactivity timeout)
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-// The mobile apps send the refresh token in the body or X-Refresh-Token header,
-// the web app as an httpOnly cookie. A token sent explicitly wins: an app's
-// cookie store may still hold a cookie from an earlier login.
-const readRefreshToken = (req) =>
-    req.body?.refreshToken || req.headers['x-refresh-token'] || req.cookies.refreshToken || null;
+// Detects the transport mechanism used by the incoming request
+const getTransportFromReq = (req) => {
+    if (isMobileClient(req)) return 'body';
+    if (req.body?.refreshToken) return 'body';
+    if (req.headers?.['x-refresh-token']) return 'header';
+    if (req.cookies?.refreshToken) return 'cookie';
+    return 'cookie';
+};
+
+// The mobile apps (X-Client-Type: mobile) send the refresh token in the body.
+// Existing transports accept body, X-Refresh-Token header, or httpOnly cookie.
+const readRefreshToken = (req) => {
+    if (isMobileClient(req)) {
+        return req.body?.refreshToken || null;
+    }
+    return req.body?.refreshToken || req.headers?.['x-refresh-token'] || req.cookies?.refreshToken || null;
+};
 
 
 // ==========================================
@@ -28,7 +42,7 @@ export const login = catchAsync(async (req, res, next) => {
     const { user_input, user_password, captchaToken, rememberMe } = req.body;
 
     if (!user_input || !user_password) {
-        throw new AppError("Username and password are required.", 400);
+        throw new AppError("Username and password are required.", 400, AUTH_ERROR_CODES.REQUIRED_FIELDS_MISSING);
     }
 
     const reqInfo = {
@@ -37,9 +51,22 @@ export const login = catchAsync(async (req, res, next) => {
         deviceInfo: extractDeviceInfo(req)
     };
 
-    const isRememberMe = rememberMe === undefined ? true : (rememberMe === true || rememberMe === 'true');
+    const isMobile = isMobileClient(req);
+    // For mobile clients, remember_me is treated as true on the server
+    const isRememberMe = isMobile ? true : (rememberMe === undefined ? true : (rememberMe === true || rememberMe === 'true'));
 
-    const { accessToken, refreshToken, user } = await authService.authenticateUser(user_input, user_password, reqInfo, isRememberMe);
+    const { accessToken, refreshToken, sessionId, user } = await authService.authenticateUser(user_input, user_password, reqInfo, isRememberMe);
+
+    if (isMobile) {
+        logAuthTransport({
+            endpoint: '/auth/login',
+            req,
+            transport: 'body',
+            sessionId
+        });
+        // Mobile receives tokens in the JSON body, with NO Set-Cookie
+        return res.status(200).json({ accessToken, refreshToken, sessionId, user });
+    }
 
     const cookieOptions = {
         httpOnly: true,
@@ -52,6 +79,13 @@ export const login = catchAsync(async (req, res, next) => {
         cookieOptions.maxAge = REFRESH_TOKEN_COOKIE_MAX_AGE;
     }
 
+    logAuthTransport({
+        endpoint: '/auth/login',
+        req,
+        transport: 'cookie',
+        sessionId
+    });
+
     res.cookie('refreshToken', refreshToken, cookieOptions);
     res.status(200).json({ accessToken, refreshToken, user });
 });
@@ -63,10 +97,23 @@ export const getCurrentUser = catchAsync(async (req, res, next) => {
 });
 
 export const logout = catchAsync(async (req, res, next) => {
-    const refreshToken = readRefreshToken(req);
-    await authService.logoutUser(refreshToken);
+    const isMobile = isMobileClient(req);
+    const transport = getTransportFromReq(req);
+    const refreshToken = isMobile ? req.body?.refreshToken : readRefreshToken(req);
 
-    res.clearCookie("refreshToken", { path: '/' });
+    const result = await authService.logoutUser(refreshToken);
+    const sessionId = result?.sessionId || 'none';
+
+    logAuthTransport({
+        endpoint: '/auth/logout',
+        req,
+        transport,
+        sessionId
+    });
+
+    if (!isMobile) {
+        res.clearCookie("refreshToken", { path: '/' });
+    }
     res.json({ message: "Logged out successfully" });
 });
 
@@ -79,11 +126,24 @@ export const superAdminLogin = catchAsync(async (req, res, next) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-        throw new AppError("Email and password are required.", 400);
+        throw new AppError("Email and password are required.", 400, AUTH_ERROR_CODES.REQUIRED_FIELDS_MISSING);
     }
 
     const reqInfo = { ip: req.clientIp || req.ip, userAgent: req.get('User-Agent') || 'Unknown' };
     const { accessToken, refreshToken, user } = await authService.authenticateSuperAdmin(email, password, reqInfo);
+
+    const isMobile = isMobileClient(req);
+
+    logAuthTransport({
+        endpoint: '/auth/super-admin/login',
+        req,
+        transport: isMobile ? 'body' : 'cookie',
+        sessionId: 'none'
+    });
+
+    if (isMobile) {
+        return res.status(200).json({ accessToken, refreshToken, sessionId: null, user });
+    }
 
     // SuperAdmin uses a short-lived 30-minute session cookie that slides if active
     res.cookie('refreshToken', refreshToken, {
@@ -103,7 +163,9 @@ export const superAdminLogin = catchAsync(async (req, res, next) => {
 // ==========================================
 
 export const refreshToken = catchAsync(async (req, res, next) => {
-    const currentRefreshToken = readRefreshToken(req);
+    const isMobile = isMobileClient(req);
+    const transport = getTransportFromReq(req);
+    const currentRefreshToken = isMobile ? req.body?.refreshToken : readRefreshToken(req);
 
     const reqInfo = {
         ip: req.clientIp || req.ip,
@@ -112,7 +174,19 @@ export const refreshToken = catchAsync(async (req, res, next) => {
     };
 
     try {
-        const { accessToken, refreshToken: newRefreshToken, rememberMe, isSuperAdmin } = await authService.refreshAuthTokens(currentRefreshToken, reqInfo);
+        const { accessToken, refreshToken: newRefreshToken, sessionId, rememberMe, isSuperAdmin } = await authService.refreshAuthTokens(currentRefreshToken, reqInfo);
+
+        logAuthTransport({
+            endpoint: '/auth/refresh',
+            req,
+            transport,
+            sessionId: sessionId || 'none'
+        });
+
+        if (isMobile) {
+            // Mobile receives tokens in the body, with NO Set-Cookie
+            return res.json({ accessToken, refreshToken: newRefreshToken, sessionId });
+        }
 
         const cookieOptions = {
             httpOnly: true,
@@ -130,7 +204,7 @@ export const refreshToken = catchAsync(async (req, res, next) => {
         res.cookie('refreshToken', newRefreshToken, cookieOptions);
         res.json({ accessToken, refreshToken: newRefreshToken });
     } catch (err) {
-        if (err.statusCode === 401 || err.statusCode === 403) {
+        if (!isMobile && (err.statusCode === 401 || err.statusCode === 403)) {
             res.clearCookie('refreshToken', { path: '/' });
         }
         throw err;
@@ -204,7 +278,7 @@ export const getUserSessions = catchAsync(async (req, res, next) => {
     res.setHeader('Expires', '0');
 
     const userId = req.user.user_id || req.user.id;
-    const currentRefreshToken = req.cookies.refreshToken || req.headers['x-refresh-token'];
+    const currentRefreshToken = readRefreshToken(req);
     const currentSessionId = req.user?.sid;
     const sessions = await authService.getUserActiveSessions(userId, currentRefreshToken, currentSessionId);
     res.status(200).json({
@@ -225,7 +299,7 @@ export const revokeUserSession = catchAsync(async (req, res, next) => {
 
 export const revokeOtherUserSessions = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id || req.user.id;
-    const currentRefreshToken = req.cookies.refreshToken || req.headers['x-refresh-token'];
+    const currentRefreshToken = readRefreshToken(req);
     const currentSessionId = req.user?.sid;
     const result = await authService.revokeOtherUserSessions(userId, currentRefreshToken, currentSessionId);
     res.status(200).json({

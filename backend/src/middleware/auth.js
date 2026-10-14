@@ -16,7 +16,7 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 
     if (!token) {
         // If we want to return JSON 401 directly like LoginAPI did:
-        return res.status(401).json({ message: "Unauthorized: No token provided" });
+        return res.status(401).json({ message: "Unauthorized: No token provided", code: "NO_TOKEN" });
     }
 
     try {

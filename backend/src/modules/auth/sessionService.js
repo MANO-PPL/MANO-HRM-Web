@@ -3,6 +3,7 @@ import { attendanceDB } from '../../config/database.js';
 import { toMySQLDateTime } from '../../utils/dateUtils.js';
 import AppError from '../../utils/AppError.js';
 import { extractDeviceInfo, parseUserAgent, getDeterministicDeviceId } from '../../utils/deviceParser.js';
+import { AUTH_ERROR_CODES } from './authErrorCodes.js';
 
 /**
  * SHA-256 token hashing. Raw tokens are never stored in the database.
@@ -179,18 +180,21 @@ export async function validateSession(token) {
     // Ended by logout, single-device revoke, or password change.
     // Must NOT cascade or revoke any other session.
     if (session.revoked) {
-        return null;
+        return { error: 'SESSION_REVOKED', session };
     }
 
     // Expiry check
     if (new Date() > new Date(session.expires_at)) {
-        return null;
+        return { error: 'SESSION_EXPIRED', session };
     }
 
     // Check account status
     const user = await attendanceDB('core_users').where('user_id', session.user_id).first();
-    if (!user || !user.is_active || user.is_deleted) {
-        return { error: 'User Blocked or Deleted' };
+    if (!user || user.is_deleted) {
+        return { error: 'ACCOUNT_DELETED', session };
+    }
+    if (!user.is_active) {
+        return { error: 'ACCOUNT_INACTIVE', session };
     }
 
     return { user, session };
@@ -269,7 +273,7 @@ export async function revokeSession({
 
         const session = await query.first();
         if (!session) {
-            throw new AppError('Session not found or already revoked', 404);
+            throw new AppError('Session not found or already revoked', 404, AUTH_ERROR_CODES.SESSION_NOT_FOUND);
         }
 
         await attendanceDB('sessions')
@@ -280,12 +284,12 @@ export async function revokeSession({
                 revoked_reason: reason
             });
 
-        return { success: true, message: 'Session revoked successfully' };
+        return { success: true, message: 'Session revoked successfully', sessionId: session.id };
     }
 
     if (token) {
         const session = await findSessionRowByToken(token);
-        if (!session) return { success: false, message: 'Session not found' };
+        if (!session) return { success: false, message: 'Session not found', sessionId: null };
 
         await attendanceDB('sessions')
             .where({ id: session.id })
@@ -295,10 +299,10 @@ export async function revokeSession({
                 revoked_reason: reason
             });
 
-        return { success: true, message: 'Session revoked successfully' };
+        return { success: true, message: 'Session revoked successfully', sessionId: session.id };
     }
 
-    throw new AppError('Neither sessionId nor token provided for revocation', 400);
+    throw new AppError('Neither sessionId nor token provided for revocation', 400, AUTH_ERROR_CODES.REQUIRED_FIELDS_MISSING);
 }
 
 /**
