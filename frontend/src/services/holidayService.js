@@ -12,10 +12,11 @@ export const holidayCacheData = {
     holidays: null
 };
 
-const clearCache = () => {
+export const clearHolidayCache = () => {
     cache.holidays = null;
     holidayCacheData.holidays = null;
 };
+const clearCache = clearHolidayCache;
 
 export const holidayService = {
     // Get all holidays

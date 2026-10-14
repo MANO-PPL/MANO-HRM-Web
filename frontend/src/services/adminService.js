@@ -49,7 +49,7 @@ const clearUserCache = () => {
     adminCacheData.users = {};
 };
 
-const clearCache = () => {
+export const clearAdminCache = () => {
     cache.departments = null;
     cache.designations = null;
     cache.shifts = null;
@@ -65,6 +65,7 @@ const clearCache = () => {
     adminCacheData.workLocations = null;
     adminCacheData.dashboardStats = {};
 };
+const clearCache = clearAdminCache;
 
 export const adminService = {
     // Get all users

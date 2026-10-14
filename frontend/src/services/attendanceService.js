@@ -45,7 +45,7 @@ export const clearShiftPolicyCache = () => {
 };
 
 // Clear the cache when data changes
-const clearCache = () => {
+export const clearAttendanceCache = () => {
     cache.holidays = null;
     cache.shiftPolicy = null;
     cache.records.clear();
@@ -71,6 +71,7 @@ const clearCache = () => {
     attendanceCacheData.todayStatus = {};
     attendanceCacheData.recentActivity = {};
 };
+const clearCache = clearAttendanceCache;
 
 export const attendanceService = {
     // Check In
