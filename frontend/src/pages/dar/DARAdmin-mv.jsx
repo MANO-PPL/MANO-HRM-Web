@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
     Search, Calendar, Building, Clock, Users, ChevronRight, X, 
-    CheckSquare, Video, ArrowRight, RefreshCw, AlertCircle
+    CheckSquare, Video, ArrowRight, RefreshCw, AlertCircle, Settings
 } from 'lucide-react';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
-import MobileDatePicker from '../../components/MobileDatePicker';
+import AdminConfigurations from '../../components/dar/admin/AdminConfigurations';
+import MiniCalendar from '../../components/dar/MiniCalendar';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import { formatPlatformDate } from '../../utils/dateUtils';
+import { formatTaskDuration } from '../../utils/darAdminMetrics';
 
 const getLocalDateYMD = (d = new Date()) => {
     const year = d.getFullYear();
@@ -22,19 +25,38 @@ const formatDateLabel = (ymdStr) => {
     return formatPlatformDate(ymdStr);
 };
 
-const DARAdminMobile = () => {
-    // Mode: 'single' | 'range'
-    const [isRange, setIsRange] = useState(false);
-    const [singleDate, setSingleDate] = useState(getLocalDateYMD());
-    const [startDate, setStartDate] = useState(getLocalDateYMD());
-    const [endDate, setEndDate] = useState(getLocalDateYMD());
+const DARAdminMobile = ({ embedded = false, onOpenConfig }) => {
+    // Helper to calculate date presets matching web admin panel (DARAdmin.jsx)
+    const getPresetDates = (preset, anchor = new Date()) => {
+        const end = getLocalDateYMD(anchor);
+        if (preset === 'today' || preset === 'day') {
+            return { start: end, end };
+        }
+        if (preset === 'yesterday') {
+            const y = new Date(anchor);
+            y.setDate(y.getDate() - 1);
+            const yStr = getLocalDateYMD(y);
+            return { start: yStr, end: yStr };
+        }
+        if (preset === '30d' || preset === 'month') {
+            const d = new Date(anchor);
+            d.setDate(d.getDate() - 29);
+            return { start: getLocalDateYMD(d), end };
+        }
+        // Default: 7 days
+        const d = new Date(anchor);
+        d.setDate(d.getDate() - 6);
+        return { start: getLocalDateYMD(d), end };
+    };
+
+    const [datePreset, setDatePreset] = useState('day'); // 'day' | 'week' | 'month' | 'custom'
+    const [dateRange, setDateRange] = useState(() => getPresetDates('day'));
+    const [showCalendar, setShowCalendar] = useState(false);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedDept, setSelectedDept] = useState(null);
     const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
-
-    // Date picker modals
-    const [datePickerState, setDatePickerState] = useState({ isOpen: false, field: 'single' });
+    const [isConfigOpen, setIsConfigOpen] = useState(false);
 
     // Data State
     const [employees, setEmployees] = useState([]);
@@ -46,8 +68,15 @@ const DARAdminMobile = () => {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
 
     // Compute effective date range
-    const effectiveStart = isRange ? startDate : singleDate;
-    const effectiveEnd = isRange ? endDate : singleDate;
+    const effectiveStart = dateRange.start;
+    const effectiveEnd = dateRange.end;
+
+    // Handle preset changes like web admin panel
+    const handlePresetChange = (preset) => {
+        setDatePreset(preset);
+        const newRange = getPresetDates(preset);
+        setDateRange(newRange);
+    };
 
     // Fetch data whenever date range changes
     useEffect(() => {
@@ -111,14 +140,17 @@ const DARAdminMobile = () => {
             const uid = act.user_id;
             if (map[uid]) {
                 map[uid].tasks += 1;
-                const dur = parseFloat(act.duration_hours || act.hours || 0);
-                map[uid].hours += dur;
+                const rawDur = parseFloat(act.duration_hours || act.hours || 0);
+                const dur = Math.round(rawDur * 10) / 10;
+                map[uid].hours = Math.round((map[uid].hours + dur) * 10) / 10;
                 map[uid].items.push({
                     type: 'task',
                     id: act.id,
                     title: act.activity_name || act.task_name || 'Task',
                     category: act.category || 'General',
                     duration: dur,
+                    startTime: act.start_time ? String(act.start_time).slice(0, 5) : '',
+                    endTime: act.end_time ? String(act.end_time).slice(0, 5) : '',
                     description: act.description || '',
                     date: act.activity_date || act.date || effectiveStart
                 });
@@ -129,14 +161,17 @@ const DARAdminMobile = () => {
             const uid = evt.user_id || evt.created_by;
             if (map[uid]) {
                 map[uid].meetings += 1;
-                const dur = parseFloat(evt.duration_hours || evt.hours || 1);
-                map[uid].hours += dur;
+                const rawDur = parseFloat(evt.duration_hours || evt.hours || 1);
+                const dur = Math.round(rawDur * 10) / 10;
+                map[uid].hours = Math.round((map[uid].hours + dur) * 10) / 10;
                 map[uid].items.push({
                     type: 'meeting',
                     id: evt.id,
                     title: evt.title || evt.event_name || 'Meeting',
                     category: 'Meeting',
                     duration: dur,
+                    startTime: evt.start_time ? String(evt.start_time).slice(0, 5) : '',
+                    endTime: evt.end_time ? String(evt.end_time).slice(0, 5) : '',
                     description: evt.description || '',
                     date: evt.event_date || evt.date || effectiveStart
                 });
@@ -162,25 +197,8 @@ const DARAdminMobile = () => {
         });
     }, [employees, selectedDept, searchQuery]);
 
-    const openDatePickerFor = (field) => {
-        setDatePickerState({ isOpen: true, field });
-    };
-
-    const handleDateSelected = (selectedStr) => {
-        if (datePickerState.field === 'single') {
-            setSingleDate(selectedStr);
-        } else if (datePickerState.field === 'start') {
-            setStartDate(selectedStr);
-            if (selectedStr > endDate) setEndDate(selectedStr);
-        } else if (datePickerState.field === 'end') {
-            setEndDate(selectedStr);
-            if (selectedStr < startDate) setStartDate(selectedStr);
-        }
-        setDatePickerState({ isOpen: false, field: 'single' });
-    };
-
-    return (
-        <MobileDashboardLayout title="DAR Overview">
+    const content = (
+        <>
             <div className="space-y-3 pb-12">
                 {/* 1. Filter Bar (replicates Flutter _FilterBar) */}
                 <div className="bg-white dark:bg-github-dark-subtle rounded-xl p-3 border border-slate-200 dark:border-github-dark-border space-y-2.5 shadow-sm">
@@ -201,74 +219,125 @@ const DARAdminMobile = () => {
                         )}
                     </div>
 
-                    {/* Row 2: Mode Toggle | Dates | Department Filter */}
-                    <div className="flex items-center gap-2">
-                        {/* Mode toggle */}
-                        <div className="flex bg-slate-100 dark:bg-[#0d1117] p-0.5 rounded-lg border border-slate-200/80 dark:border-github-dark-border shrink-0">
-                            <button
-                                onClick={() => setIsRange(false)}
-                                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${
-                                    !isRange 
-                                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-xs' 
-                                        : 'text-slate-500 dark:text-slate-400'
-                                }`}
-                            >
-                                Single
-                            </button>
-                            <button
-                                onClick={() => setIsRange(true)}
-                                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${
-                                    isRange 
-                                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-xs' 
-                                        : 'text-slate-500 dark:text-slate-400'
-                                }`}
-                            >
-                                Range
-                            </button>
-                        </div>
-
-                        {/* Date Controls */}
-                        <div className="flex-1 min-w-0">
-                            {!isRange ? (
+                    {/* Row 2: Mode Presets (Day/Week/Month) + Quick Actions (Calendar & Dept) */}
+                    <div className="flex items-center justify-between gap-2">
+                        {/* Presets: Day / Week / Month (Replicating web admin panel) */}
+                        <div className="inline-flex rounded-lg border border-slate-200/90 dark:border-github-dark-border overflow-hidden bg-white dark:bg-github-dark-subtle shrink-0 shadow-2xs">
+                            {[
+                                { key: 'day', label: 'Day' },
+                                { key: 'week', label: 'Week' },
+                                { key: 'month', label: 'Month' },
+                            ].map((p) => (
                                 <button
-                                    onClick={() => openDatePickerFor('single')}
-                                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 bg-slate-50 dark:bg-[#0d1117] border border-slate-200/80 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 truncate"
+                                    key={p.key}
+                                    type="button"
+                                    onClick={() => handlePresetChange(p.key)}
+                                    className={`px-3 py-1.5 text-xs font-bold transition-colors border-r last:border-r-0 border-slate-200/90 dark:border-github-dark-border cursor-pointer ${
+                                        datePreset === p.key
+                                            ? 'bg-indigo-600 text-white shadow-2xs'
+                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                    }`}
                                 >
-                                    <Calendar size={13} className="text-slate-400 shrink-0" />
-                                    <span className="truncate">{formatDateLabel(singleDate)}</span>
+                                    {p.label}
                                 </button>
-                            ) : (
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={() => openDatePickerFor('start')}
-                                        className="flex-1 min-w-0 py-1.5 px-1 bg-slate-50 dark:bg-[#0d1117] border border-slate-200/80 dark:border-github-dark-border rounded-lg text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate text-center"
-                                    >
-                                        {formatDateLabel(startDate)}
-                                    </button>
-                                    <span className="text-slate-400 text-xs">→</span>
-                                    <button
-                                        onClick={() => openDatePickerFor('end')}
-                                        className="flex-1 min-w-0 py-1.5 px-1 bg-slate-50 dark:bg-[#0d1117] border border-slate-200/80 dark:border-github-dark-border rounded-lg text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate text-center"
-                                    >
-                                        {formatDateLabel(endDate)}
-                                    </button>
-                                </div>
-                            )}
+                            ))}
                         </div>
 
-                        {/* Dept Button */}
-                        <button
-                            onClick={() => setIsDeptModalOpen(true)}
-                            className={`p-2 rounded-lg border transition-all shrink-0 ${
-                                selectedDept
-                                    ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                                    : 'bg-slate-50 dark:bg-[#0d1117] border-slate-200/80 dark:border-github-dark-border text-slate-500'
-                            }`}
-                            title="Filter by Department"
-                        >
-                            <Building size={15} />
-                        </button>
+                        {/* Action Buttons: Calendar Modal & Department Filter */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setShowCalendar(true)}
+                                className={`p-2 rounded-lg border transition-all cursor-pointer ${
+                                    showCalendar || datePreset === 'custom'
+                                        ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                                        : 'bg-slate-50 dark:bg-[#0d1117] border-slate-200/80 dark:border-github-dark-border text-slate-500'
+                                }`}
+                                title="Open Calendar Range Picker"
+                            >
+                                <Calendar size={15} />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setIsDeptModalOpen(true)}
+                                className={`p-2 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                                    selectedDept
+                                        ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                                        : 'bg-slate-50 dark:bg-[#0d1117] border-slate-200/80 dark:border-github-dark-border text-slate-500'
+                                }`}
+                                title="Filter by Department"
+                            >
+                                <Building size={15} />
+                            </button>
+                        </div>
                     </div>
+
+                    {/* Row 3: Native Date Range Pickers (Web Admin Panel Style) */}
+                    <div className="flex items-center justify-between gap-1.5 bg-slate-50 dark:bg-[#0d1117] border border-slate-200/80 dark:border-github-dark-border rounded-lg px-2.5 py-1.5 shadow-2xs">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <Calendar size={13} className="text-indigo-500 shrink-0" />
+                            <input
+                                type="date"
+                                value={dateRange.start}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val) {
+                                        if (datePreset === 'day') {
+                                            setDateRange({ start: val, end: val });
+                                        } else {
+                                            setDatePreset('custom');
+                                            setDateRange(prev => ({
+                                                start: val,
+                                                end: prev.end < val ? val : prev.end
+                                            }));
+                                        }
+                                    }
+                                }}
+                                className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-200 outline-none w-full min-w-0 cursor-pointer"
+                            />
+                        </div>
+
+                        <span className="text-slate-400 text-[10px] font-bold uppercase shrink-0 px-1">to</span>
+
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
+                            <input
+                                type="date"
+                                value={dateRange.end}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val) {
+                                        setDatePreset('custom');
+                                        setDateRange(prev => ({
+                                            start: prev.start > val ? val : prev.start,
+                                            end: val
+                                        }));
+                                    }
+                                }}
+                                className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-200 outline-none w-full min-w-0 text-right cursor-pointer"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Active Multi-Day Range Banner with Quick Reset */}
+                    {dateRange.start !== dateRange.end && (
+                        <div className="flex items-center justify-between px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg border border-indigo-200/60 dark:border-indigo-900/40 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                            <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                <Calendar size={13} className="shrink-0" />
+                                <span className="truncate text-[11px]">
+                                    {formatDateLabel(dateRange.start)} — {formatDateLabel(dateRange.end)}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handlePresetChange('day')}
+                                className="p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full shrink-0 cursor-pointer"
+                                title="Reset to today"
+                            >
+                                <X size={13} />
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Active Department Chip Indicator */}
@@ -336,7 +405,7 @@ const DARAdminMobile = () => {
                                                 )}
                                                 {stats.hours > 0 && (
                                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/40">
-                                                        {stats.hours}h
+                                                        {formatTaskDuration(stats.hours)}
                                                     </span>
                                                 )}
                                             </div>
@@ -408,28 +477,7 @@ const DARAdminMobile = () => {
                 )}
             </AnimatePresence>
 
-            {/* Date Picker Modal */}
-            {datePickerState.isOpen && (
-                <MobileDatePicker
-                    isOpen={datePickerState.isOpen}
-                    onClose={() => setDatePickerState({ isOpen: false, field: 'single' })}
-                    value={
-                        datePickerState.field === 'single'
-                            ? singleDate
-                            : datePickerState.field === 'start'
-                            ? startDate
-                            : endDate
-                    }
-                    onChange={handleDateSelected}
-                    title={
-                        datePickerState.field === 'single'
-                            ? 'Select Date'
-                            : datePickerState.field === 'start'
-                            ? 'Select Start Date'
-                            : 'Select End Date'
-                    }
-                />
-            )}
+
 
             {/* Employee Detailed DAR Sheet (replicates Flutter DarAdminSheet) */}
             <AnimatePresence>
@@ -499,8 +547,8 @@ const DARAdminMobile = () => {
                                                         {item.title}
                                                     </span>
                                                 </div>
-                                                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-full border border-indigo-200/40">
-                                                    {item.duration}h
+                                                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-full border border-indigo-200/40 shrink-0">
+                                                    {formatTaskDuration(item.duration, item.startTime, item.endTime)}
                                                 </span>
                                             </div>
                                             {item.description && (
@@ -509,6 +557,12 @@ const DARAdminMobile = () => {
                                                 </p>
                                             )}
                                             <div className="flex items-center gap-2 text-[10px] text-slate-400 pt-1">
+                                                {item.startTime && item.endTime && (
+                                                    <>
+                                                        <span className="font-semibold text-slate-600 dark:text-slate-300">{item.startTime} - {item.endTime}</span>
+                                                        <span>•</span>
+                                                    </>
+                                                )}
                                                 <span>{formatDateLabel(item.date)}</span>
                                                 <span>•</span>
                                                 <span className="capitalize">{item.category}</span>
@@ -521,6 +575,78 @@ const DARAdminMobile = () => {
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Configuration Drawer */}
+            <AnimatePresence>
+                {isConfigOpen && (
+                    <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsConfigOpen(false)}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+                        />
+                        <motion.div
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="relative w-[85vw] max-w-[340px] h-full bg-white dark:bg-github-dark-subtle shadow-2xl flex flex-col border-l border-slate-200 dark:border-github-dark-border"
+                        >
+                            <AdminConfigurations onClose={() => setIsConfigOpen(false)} />
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Calendar Modal Portal */}
+            {showCalendar && createPortal(
+                <div className="fixed inset-0 z-[9999] isolate flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowCalendar(false)} />
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="relative z-10 bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-100 dark:border-white/10 shadow-2xl"
+                    >
+                        <MiniCalendar
+                            selectedDate={dateRange.start}
+                            endDate={dateRange.end}
+                            disableRange={false}
+                            onDateSelect={(range) => {
+                                setDateRange(range);
+                                setDatePreset(range.start === range.end ? 'day' : 'custom');
+                                setShowCalendar(false);
+                            }}
+                        />
+                    </motion.div>
+                </div>,
+                document.body
+            )}
+        </>
+    );
+
+    if (embedded) {
+        return content;
+    }
+
+    return (
+        <MobileDashboardLayout 
+            title="DAR Overview"
+            headerAction={
+                <button
+                    onClick={() => {
+                        if (onOpenConfig) onOpenConfig();
+                        else setIsConfigOpen(true);
+                    }}
+                    className="p-1.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer active:scale-95"
+                    title="Configurations"
+                >
+                    <Settings size={18} />
+                </button>
+            }
+        >
+            {content}
         </MobileDashboardLayout>
     );
 };

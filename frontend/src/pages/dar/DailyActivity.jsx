@@ -51,9 +51,9 @@ const DailyActivity = () => {
     const [adminTab, setAdminTab] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
-        if (['insights', 'requests', 'data'].includes(tab)) return tab;
+        if (['insights', 'requests', 'data', 'timeline'].includes(tab)) return tab === 'data' ? 'timeline' : tab;
         if (params.get('requestId') || params.get('req_id') || params.get('id')) return 'requests';
-        return 'insights';
+        return 'timeline';
     });
     const [selectedDate, setSelectedDate] = useState(() => {
         const params = new URLSearchParams(window.location.search);
@@ -73,16 +73,24 @@ const DailyActivity = () => {
     const ADMIN_TOUR_STEPS = React.useMemo(() => [
         {
             targetId: 'dar-admin-tabs',
-            title: 'Admin Controls',
-            description: 'Switch between Insights, Requests, and Master Data.',
+            title: 'Admin Operations Hub',
+            description: 'Switch between Activity Timeline, Analytics, and Requests.',
             action: () => {
-                setAdminTab('insights');
+                setAdminTab('timeline');
+            }
+        },
+        {
+            targetId: 'dar-admin-master-data-tab-content',
+            title: 'Activity Timeline',
+            description: 'View real-time employee timelines, task intervals, shift hours, and attendance audit.',
+            action: () => {
+                setAdminTab('timeline');
             }
         },
         {
             targetId: 'dar-admin-insights-tab-content',
-            title: 'Insights Dashboard',
-            description: 'This is the Insights dashboard. Here you can monitor overall team productivity, task workload distribution, department-wise activity focus, and employee report submission consistency.',
+            title: 'Analytics & Insights',
+            description: 'Monitor overall team productivity, task workload distribution, department focus, and consistency.',
             action: () => {
                 setAdminTab('insights');
             }
@@ -90,17 +98,9 @@ const DailyActivity = () => {
         {
             targetId: 'dar-admin-requests-tab-content',
             title: 'Requests & Approvals',
-            description: 'This is the Requests queue. As an administrator, you can review, approve, or reject employee requests for late daily activity report submissions or corrections.',
+            description: 'Review, approve, or reject employee requests for late daily activity report submissions or corrections.',
             action: () => {
                 setAdminTab('requests');
-            }
-        },
-        {
-            targetId: 'dar-admin-master-data-tab-content',
-            title: 'Master Data Config & Audit',
-            description: 'This is the Master Data tab. Here you can configure system-wide activity categories, view raw unedited audit timelines, and manage historical daily activity report submissions.',
-            action: () => {
-                setAdminTab('data');
             }
         }
     ], [setAdminTab]);
@@ -363,100 +363,107 @@ const DailyActivity = () => {
     return (
         <DashboardLayout title="Daily Activity Report" noPadding={true} tourPageKey={currentPageKey} tourSteps={currentTourSteps}>
             <div className="h-[calc(100vh-64px)] p-3 flex flex-col overflow-hidden space-y-3 dar-context">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
-                {/* Admin Tabs */}
-                {['admin', 'hr'].includes(user?.user_type) ? (
-                    <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
-                        <button
-                            data-tour-id="dar-main-tab-activity"
-                            onClick={() => setActiveMainTab('daily_activity')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeMainTab === 'daily_activity'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                }`}
-                        >
-                            <Calendar size={14} className={`${activeMainTab === 'daily_activity' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                            <span className="leading-none">Daily Activity</span>
-                        </button>
-                        <button
-                            data-tour-id="dar-main-tab-admin"
-                            onClick={() => setActiveMainTab('admin')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeMainTab === 'admin'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                }`}
-                        >
-                            <Shield size={14} className={`${activeMainTab === 'admin' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                            <span className="leading-none">Admin Panel</span>
-                        </button>
-                    </div>
-                ) : <div />}
-
-                {/* Primary Actions Group */}
                 {activeMainTab !== 'admin' && (
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={handleToday}
-                            className="px-4 py-2 text-sm font-medium text-slate-800 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-all border border-slate-200 dark:border-github-dark-border shadow-sm flex items-center gap-2"
-                        >
-                            {selectedDate === new Date().toISOString().split('T')[0] ? (
-                                "Today"
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-indigo-600 dark:text-indigo-400">●</span>
-                                    {formatPlatformDate(selectedDate)}
-                                </div>
-                            )}
-                        </button>
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowActions(!showActions)}
-                                data-tour-id="dar-entry-form"
-                                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-lg shadow-indigo-200 dark:shadow-none transition-all active:scale-95"
-                            >
-                                <Plus size={18} />
-                                <span>Quick Action</span>
-                                <ChevronDown size={16} className={`transition-transform ${showActions ? 'rotate-180' : ''}`} />
-                            </button>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+                        {/* Admin Tabs */}
+                        {['admin', 'hr'].includes(user?.user_type) ? (
+                            <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
+                                <button
+                                    data-tour-id="dar-main-tab-activity"
+                                    onClick={() => setActiveMainTab('daily_activity')}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeMainTab === 'daily_activity'
+                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                        }`}
+                                >
+                                    <Calendar size={14} className={`${activeMainTab === 'daily_activity' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                                    <span className="leading-none">Daily Activity</span>
+                                </button>
+                                <button
+                                    data-tour-id="dar-main-tab-admin"
+                                    onClick={() => setActiveMainTab('admin')}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeMainTab === 'admin'
+                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                        }`}
+                                >
+                                    <Shield size={14} className={`${activeMainTab === 'admin' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                                    <span className="leading-none">Admin Panel</span>
+                                </button>
+                            </div>
+                        ) : <div />}
 
-                            <AnimatePresence>
-                                {showActions && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                        className="absolute right-0 mt-2 w-64 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 overflow-hidden"
-                                    >
-                                        <div className="p-2 space-y-1">
-                                            <button
-                                                onClick={() => { handleCreate('Task'); setShowActions(false); }}
-                                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-github-dark-text hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
-                                            >
-                                                <div className="p-1.5 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-md">
-                                                    <CheckSquare size={16} />
-                                                </div>
-                                                <span className="font-semibold">New Daily Task</span>
-                                            </button>
-                                            <button
-                                                onClick={() => { handleCreate('Meeting'); setShowActions(false); }}
-                                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-github-dark-text hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
-                                            >
-                                                <div className="p-1.5 bg-purple-50 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-md">
-                                                    <Video size={16} />
-                                                </div>
-                                                <span className="font-semibold">Schedule Meeting</span>
-                                            </button>
-                                        </div>
-                                    </motion.div>
+                        {/* Primary Actions Group */}
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={handleToday}
+                                className="px-4 py-2 text-sm font-medium text-slate-800 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-all border border-slate-200 dark:border-github-dark-border shadow-sm flex items-center gap-2"
+                            >
+                                {selectedDate === new Date().toISOString().split('T')[0] ? (
+                                    "Today"
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-indigo-600 dark:text-indigo-400">●</span>
+                                        {formatPlatformDate(selectedDate)}
+                                    </div>
                                 )}
-                            </AnimatePresence>
+                            </button>
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowActions(!showActions)}
+                                    data-tour-id="dar-entry-form"
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-lg shadow-indigo-200 dark:shadow-none transition-all active:scale-95"
+                                >
+                                    <Plus size={18} />
+                                    <span>Quick Action</span>
+                                    <ChevronDown size={16} className={`transition-transform ${showActions ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                <AnimatePresence>
+                                    {showActions && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            className="absolute right-0 mt-2 w-64 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 overflow-hidden"
+                                        >
+                                            <div className="p-2 space-y-1">
+                                                <button
+                                                    onClick={() => { handleCreate('Task'); setShowActions(false); }}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-github-dark-text hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
+                                                >
+                                                    <div className="p-1.5 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-md">
+                                                        <CheckSquare size={16} />
+                                                    </div>
+                                                    <span className="font-semibold">New Daily Task</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => { handleCreate('Meeting'); setShowActions(false); }}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-github-dark-text hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
+                                                >
+                                                    <div className="p-1.5 bg-purple-50 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-md">
+                                                        <Video size={16} />
+                                                    </div>
+                                                    <span className="font-semibold">Schedule Meeting</span>
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
                         </div>
                     </div>
                 )}
-            </div>
 
                 {activeMainTab === 'admin' ? (
-                    <DARAdmin embedded={true} activeTab={adminTab} setActiveTab={setAdminTab} />
+                    <DARAdmin
+                        embedded={true}
+                        activeTab={adminTab}
+                        setActiveTab={setAdminTab}
+                        activeMainTab={activeMainTab}
+                        setActiveMainTab={setActiveMainTab}
+                        canAccessAdmin={['admin', 'hr'].includes(user?.user_type)}
+                    />
                 ) : (
                     <>
                         <div className="flex flex-row gap-6 flex-1 min-h-0 min-w-[1000px]">

@@ -1,8 +1,31 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
+const parseLocalDate = (dateStr) => {
+    if (!dateStr) return new Date();
+    if (dateStr instanceof Date) return dateStr;
+    const parts = String(dateStr).split('T')[0].split('-');
+    if (parts.length === 3) {
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    }
+    return new Date(dateStr);
+};
+
+const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const MiniCalendar = ({ selectedDate, endDate, onDateSelect, disableRange = false, maxDate }) => {
-    const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
+    const [currentMonth, setCurrentMonth] = useState(() => parseLocalDate(selectedDate));
+
+    React.useEffect(() => {
+        if (selectedDate) {
+            setCurrentMonth(parseLocalDate(selectedDate));
+        }
+    }, [selectedDate]);
 
     // Helper: Get days in month
     const getDaysInMonth = (date) => {
@@ -26,8 +49,6 @@ const MiniCalendar = ({ selectedDate, endDate, onDateSelect, disableRange = fals
             d1.getFullYear() === d2.getFullYear();
     };
 
-    const currentSelectedDate = new Date(selectedDate);
-
     const prevMonth = () => {
         setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
     };
@@ -40,15 +61,31 @@ const MiniCalendar = ({ selectedDate, endDate, onDateSelect, disableRange = fals
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState(null);
     const [dragEnd, setDragEnd] = useState(null);
+    const [selectingStart, setSelectingStart] = useState(null);
 
-    const formatDate = (date) => {
-        const offsetDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
-        return offsetDate.toISOString().split('T')[0];
+    const handleDateClick = (dateStr) => {
+        if (disableRange) {
+            onDateSelect({ start: dateStr, end: dateStr });
+            return;
+        }
+
+        if (!selectingStart) {
+            setSelectingStart(dateStr);
+            setDragStart(dateStr);
+            setDragEnd(dateStr);
+        } else {
+            const start = selectingStart <= dateStr ? selectingStart : dateStr;
+            const end = selectingStart <= dateStr ? dateStr : selectingStart;
+            setSelectingStart(null);
+            setIsDragging(false);
+            setDragStart(null);
+            setDragEnd(null);
+            onDateSelect({ start, end });
+        }
     };
 
     const handleMouseDown = (dateStr) => {
         if (disableRange) {
-            // Immediate selection for single date mode
             onDateSelect({ start: dateStr, end: dateStr });
             return;
         }
@@ -66,24 +103,19 @@ const MiniCalendar = ({ selectedDate, endDate, onDateSelect, disableRange = fals
     const handleMouseUp = () => {
         if (isDragging && dragStart && dragEnd && !disableRange) {
             setIsDragging(false);
-
-            // Determine actual start/end (user might drag backwards)
-            const d1 = new Date(dragStart);
-            const d2 = new Date(dragEnd);
-            const start = d1 < d2 ? dragStart : dragEnd;
-            const end = d1 < d2 ? dragEnd : dragStart;
-
+            const start = dragStart <= dragEnd ? dragStart : dragEnd;
+            const end = dragStart <= dragEnd ? dragEnd : dragStart;
             onDateSelect({ start, end });
         }
     };
 
-    // Helper to check if date is in current drag range
+    // Helper to check if date is in current drag / tap range
     const rangeStatus = (() => {
-        if (!dragStart || !dragEnd) return {};
-        const d1 = new Date(dragStart);
-        const d2 = new Date(dragEnd);
-        const start = d1 < d2 ? dragStart : dragEnd;
-        const end = d1 < d2 ? dragEnd : dragStart;
+        const s = dragStart || selectingStart;
+        const e = dragEnd || selectingStart;
+        if (!s || !e) return {};
+        const start = s <= e ? s : e;
+        const end = s <= e ? e : s;
         return { start, end };
     })();
 
@@ -113,6 +145,12 @@ const MiniCalendar = ({ selectedDate, endDate, onDateSelect, disableRange = fals
                 </div>
             </div>
 
+            {selectingStart && !disableRange && (
+                <div className="text-[10px] text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 py-1 px-2 rounded-lg mb-2.5 animate-pulse">
+                    Tap end date to set range
+                </div>
+            )}
+
             <div className="grid grid-cols-7 gap-1 text-center mb-3">
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
                     <div key={`${day}-${i}`} className="text-[11px] font-black text-slate-400 dark:text-slate-600 uppercase">{day}</div>
@@ -131,12 +169,11 @@ const MiniCalendar = ({ selectedDate, endDate, onDateSelect, disableRange = fals
                     let isRangeEnd = false;
                     let isInRange = false;
 
-                    // 1. Dragging Phase
-                    if (isDragging && rStart && rEnd) {
-                        const d = new Date(dateStr);
+                    // 1. Dragging or Tap-Selection Phase
+                    if ((isDragging || selectingStart) && rStart && rEnd) {
                         isRangeStart = dateStr === rStart;
                         isRangeEnd = dateStr === rEnd;
-                        isInRange = d >= new Date(rStart) && d <= new Date(rEnd);
+                        isInRange = dateStr >= rStart && dateStr <= rEnd;
                         isSelected = isRangeStart || isRangeEnd;
                     }
                     // 2. Persistent View Phase (Props)
@@ -184,9 +221,14 @@ const MiniCalendar = ({ selectedDate, endDate, onDateSelect, disableRange = fals
                                 <div className="absolute inset-0 bg-indigo-50 dark:bg-indigo-900/50 rounded-full z-0 opacity-50" />
                             )}
 
-                             {/* Date Circle */}
+                            {/* Date Circle */}
                             <button
+                                type="button"
                                 disabled={isDisabled}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!isDisabled) handleDateClick(dateStr);
+                                }}
                                 className={`
                                     relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] transition-all duration-200 font-medium
                                     ${isDisabled ? 'text-slate-200 dark:text-slate-800 cursor-not-allowed' :
