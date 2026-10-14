@@ -187,6 +187,59 @@ export const formatPlatformDate = (dateVal) => {
 };
 
 /**
+ * Universal platform date & time formatter.
+ * Standard format: "10th October 2026, 12:31:31 AM"
+ * If input lacks time component (or is strictly YYYY-MM-DD), falls back to "10th October 2026".
+ */
+export const formatPlatformDateTime = (dateVal, options = {}) => {
+    if (!dateVal) return '';
+    const { includeSeconds = true } = options;
+
+    if (typeof dateVal === 'string') {
+        const str = dateVal.trim();
+        if (!str) return '';
+        // If strictly date-only (e.g. 2026-10-10) with no time component
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+            return formatPlatformDate(str);
+        }
+    }
+
+    let d;
+    if (dateVal instanceof Date) {
+        d = isNaN(dateVal.getTime()) ? null : dateVal;
+    } else {
+        d = new Date(dateVal);
+    }
+    if (!d || isNaN(d.getTime())) return formatPlatformDate(dateVal);
+
+    const day = d.getDate();
+    const suffix = getOrdinalSuffix(day);
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    const month = monthNames[d.getMonth()];
+    const year = d.getFullYear();
+    const datePart = `${day}${suffix} ${month} ${year}`;
+
+    let hour = d.getHours();
+    const minute = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour === 0) hour = 12;
+
+    let timePart = '';
+    if (includeSeconds) {
+        const second = String(d.getSeconds()).padStart(2, '0');
+        timePart = `${hour}:${minute}:${second} ${ampm}`;
+    } else {
+        timePart = `${hour}:${minute} ${ampm}`;
+    }
+
+    return `${datePart}, ${timePart}`;
+};
+
+/**
  * Alias for formatPlatformDate
  */
 export const formatDateDisplay = formatPlatformDate;

@@ -119,6 +119,12 @@ export async function createCorrectionRequest({
       .first();
   }
 
+  const userRecord = await attendanceDB("core_users")
+    .where("user_id", user_id)
+    .select("user_name")
+    .first();
+  const submitterName = userRecord?.user_name || "Employee";
+
   // CASE A: UPDATE PENDING REQUEST IN-PLACE (No new row created)
   if (pendingRecord) {
     let auditTrail = [];
@@ -135,6 +141,7 @@ export async function createCorrectionRequest({
     auditTrail.push({
       action: "updated",
       by: user_id,
+      by_name: submitterName,
       at: new Date().toISOString(),
       reason: reason || "Correction details updated"
     });
@@ -168,7 +175,7 @@ export async function createCorrectionRequest({
     correction_data: null, // Reserved strictly for final applied data upon review
     status: "pending",
     audit_trail: JSON.stringify([
-      { action: "submitted", by: user_id, at: new Date().toISOString() }
+      { action: "submitted", by: user_id, by_name: submitterName, at: new Date().toISOString() }
     ]),
     submitted_at: attendanceDB.fn.now(),
     updated_at: attendanceDB.fn.now()
@@ -210,6 +217,7 @@ export async function fetchCorrectionRequests({
   const data = await attendanceDB("attn_corrections as c")
     .join("core_users as u", "u.user_id", "c.user_id")
     .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
+    .leftJoin("core_users as rev", "rev.user_id", "c.reviewed_by")
     .where("u.org_id", org_id)
     .modify(applyFilters)
     .select(
@@ -225,6 +233,10 @@ export async function fetchCorrectionRequests({
       "c.correction_data",
       "c.audit_trail",
       "c.submitted_at",
+      "c.reviewed_by",
+      "c.reviewed_at",
+      "c.review_comments",
+      "rev.user_name as reviewer_name",
       "c.updated_at",
       "u.user_id",
       "u.user_name",
@@ -254,6 +266,30 @@ export async function fetchCorrectionRequests({
         }
       }
     });
+
+    // Hydrate audit_trail with proper names and comments
+    if (Array.isArray(copy.audit_trail)) {
+      copy.audit_trail = copy.audit_trail.map(step => {
+        const s = { ...step };
+        if (s.action !== 'submitted') {
+          if ((!s.by_name || s.by_name.toLowerCase() === 'admin') && copy.reviewer_name) {
+            s.by_name = copy.reviewer_name;
+          }
+          if (s.comments && /^approved by (?:administrator|administration)$/i.test(String(s.comments).trim()) && copy.reviewer_name) {
+            s.comments = `Approved by ${copy.reviewer_name}`;
+          }
+        } else {
+          if ((!s.by_name || s.by_name.toLowerCase() === 'employee') && copy.user_name) {
+            s.by_name = copy.user_name;
+          }
+        }
+        return s;
+      });
+    }
+
+    if (copy.review_comments && /^approved by (?:administrator|administration)$/i.test(String(copy.review_comments).trim()) && copy.reviewer_name) {
+      copy.review_comments = `Approved by ${copy.reviewer_name}`;
+    }
 
     // Extract attachment metadata stored inside proposed_data JSON
     const att = Array.isArray(copy.proposed_data)
@@ -290,6 +326,7 @@ export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role
   let query = attendanceDB("attn_corrections as c")
     .join("core_users as u", "u.user_id", "c.user_id")
     .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
+    .leftJoin("core_users as rev", "rev.user_id", "c.reviewed_by")
     .select(
       "c.id as acr_id",
       "c.id",
@@ -304,6 +341,7 @@ export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role
       "c.reviewed_by",
       "c.reviewed_at",
       "c.review_comments",
+      "rev.user_name as reviewer_name",
       "c.audit_trail",
       "c.submitted_at",
       "c.updated_at",
@@ -336,6 +374,30 @@ export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role
     } else if (!correction[col]) {
       correction[col] = col === 'audit_trail' ? [] : (col === 'correction_data' ? {} : null);
     }
+  }
+
+  // Hydrate audit_trail and review_comments with proper names
+  if (Array.isArray(correction.audit_trail)) {
+    correction.audit_trail = correction.audit_trail.map(step => {
+      const s = { ...step };
+      if (s.action !== 'submitted') {
+        if ((!s.by_name || s.by_name.toLowerCase() === 'admin') && correction.reviewer_name) {
+          s.by_name = correction.reviewer_name;
+        }
+        if (s.comments && /^approved by (?:administrator|administration)$/i.test(String(s.comments).trim()) && correction.reviewer_name) {
+          s.comments = `Approved by ${correction.reviewer_name}`;
+        }
+      } else {
+        if ((!s.by_name || s.by_name.toLowerCase() === 'employee') && correction.user_name) {
+          s.by_name = correction.user_name;
+        }
+      }
+      return s;
+    });
+  }
+
+  if (correction.review_comments && /^approved by (?:administrator|administration)$/i.test(String(correction.review_comments).trim()) && correction.reviewer_name) {
+    correction.review_comments = `Approved by ${correction.reviewer_name}`;
   }
 
   // Extract attachment from proposed_data JSON
@@ -399,11 +461,23 @@ export async function reviewCorrectionRequest({
     }
   }
 
+  const reviewer = await attendanceDB("core_users")
+    .where("user_id", reviewer_id)
+    .select("user_name")
+    .first();
+  const reviewerName = reviewer?.user_name || "Admin";
+
+  const isGenericComment = !review_comments || /^approved by (?:administrator|administration)$/i.test(String(review_comments).trim());
+  const effectiveComments = isGenericComment
+    ? (reviewerName && reviewerName !== 'Admin' ? `Approved by ${reviewerName}` : 'Approved by Administrator')
+    : review_comments;
+
   auditTrail.push({
     action: status,
     by: reviewer_id,
-    at: new Date(),
-    comments: review_comments || null
+    by_name: reviewerName,
+    at: new Date().toISOString(),
+    comments: effectiveComments
   });
 
   // Determine the sessions to apply: admin override takes priority, else use proposed_data
@@ -435,7 +509,7 @@ export async function reviewCorrectionRequest({
     status,
     reviewed_by: reviewer_id,
     reviewed_at: attendanceDB.fn.now(),
-    review_comments: review_comments || null,
+    review_comments: effectiveComments,
     audit_trail: JSON.stringify(auditTrail),
     updated_at: attendanceDB.fn.now()
   };

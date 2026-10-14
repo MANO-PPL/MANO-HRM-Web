@@ -40,7 +40,22 @@ export function formatLeaveAuditTrail(leave) {
         }
     }
 
-    return Array.isArray(trail) ? trail : [];
+    return Array.isArray(trail) ? trail.map(event => {
+        const copy = { ...event };
+        if (copy.action !== 'submitted') {
+            if ((!copy.by_name || copy.by_name.toLowerCase() === 'admin') && leave.reviewer_name) {
+                copy.by_name = leave.reviewer_name;
+            }
+            if (copy.comments && /^approved by (?:administrator|administration)$/i.test(String(copy.comments).trim()) && leave.reviewer_name) {
+                copy.comments = `Approved by ${leave.reviewer_name}`;
+            }
+        } else {
+            if ((!copy.by_name || copy.by_name.toLowerCase() === 'employee') && leave.user_name) {
+                copy.by_name = leave.user_name;
+            }
+        }
+        return copy;
+    }) : [];
 }
 
 
@@ -455,13 +470,19 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
 
         const auditTrail = formatLeaveAuditTrail(request);
         const reviewer = await trx('core_users').where({ user_id: reviewed_by }).select('user_name').first();
+        const reviewerName = reviewer?.user_name || 'Admin';
+
+        const isGenericComment = !admin_comment || /^approved by (?:administrator|administration)$/i.test(String(admin_comment).trim());
+        const effectiveComment = (lowerStatus === 'approved' && isGenericComment)
+            ? (reviewerName && reviewerName !== 'Admin' ? `Approved by ${reviewerName}` : 'Approved by Administrator')
+            : (admin_comment || null);
 
         auditTrail.push({
             action: lowerStatus,
             by: reviewed_by,
-            by_name: reviewer?.user_name || 'Admin',
+            by_name: reviewerName,
             at: new Date().toISOString(),
-            comments: admin_comment || null
+            comments: effectiveComment
         });
 
         const updateData = {
@@ -471,8 +492,8 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
             audit_trail: JSON.stringify(auditTrail)
         };
 
-        if (admin_comment !== undefined) {
-            updateData.admin_comment = admin_comment;
+        if (admin_comment !== undefined || effectiveComment) {
+            updateData.admin_comment = effectiveComment;
         }
 
         if (lowerStatus === 'approved') {

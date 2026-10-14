@@ -1,5 +1,6 @@
 import React from 'react';
 import { Activity } from 'lucide-react';
+import { formatPlatformDateTime } from '../utils/dateUtils';
 
 /**
  * Safely extracts and normalizes an audit trail array from a record or string.
@@ -37,7 +38,7 @@ export function getNormalizedAuditTrail(record) {
             trail.push({
                 action: lowerStatus,
                 by: record.reviewed_by || null,
-                by_name: record.reviewer_name || (record.reviewed_by ? 'Admin' : 'System'),
+                by_name: record.reviewer_name || record.reviewed_by_name || (record.reviewed_by ? 'Admin' : 'System'),
                 at: new Date(reviewDate).toISOString(),
                 comments: record.admin_comment || record.review_comments || record.remarks || null
             });
@@ -56,7 +57,7 @@ export function getNormalizedAuditTrail(record) {
  * @param {Array} [props.trail] - Explicit audit trail array (optional, overrides record.audit_trail)
  * @param {boolean} [props.compact] - If true, uses compact padding and smaller typography
  * @param {string|number} [props.currentUserId] - ID of the logged-in user to show 'You'
- * @param {boolean} [props.isEmployee] - When true, hides admin personal names and displays 'Admin'
+ * @param {boolean} [props.isEmployee] - When true, indicates employee viewer context
  * @param {string} [props.title] - Custom section header title
  * @param {string} [props.className] - Extra container styling
  */
@@ -74,7 +75,7 @@ export default function AuditTrailTimeline({
 
     const recordUserId = record?.user_id;
     const recordUserName = record?.user_name;
-    const recordReviewerName = record?.reviewer_name;
+    const recordReviewerName = record?.reviewer_name || record?.reviewed_by_name || record?.reviewedBy;
 
     return (
         <div
@@ -109,22 +110,40 @@ export default function AuditTrailTimeline({
                         Number(event.by) === Number(currentUserId);
 
                     let authorName = 'Admin';
-                    if (isEmployee) {
-                        // For employee view: submission is 'You' (or user's name), all reviews are 'Admin'
-                        if (isSubmission) {
-                            authorName = isCurrentUser ? 'You' : (recordUserName || event.by_name || 'Employee');
+                    if (isSubmission) {
+                        if (isCurrentUser) {
+                            authorName = 'You';
                         } else {
-                            authorName = 'Admin';
+                            authorName = event.by_name || recordUserName || 'Employee';
                         }
-                    } else if (isCurrentUser) {
-                        authorName = 'You';
-                    } else if (isSubmission && recordUserId && Number(event.by) === Number(recordUserId)) {
-                        authorName = recordUserName || event.by_name || 'Employee';
                     } else {
-                        authorName = event.by_name || recordReviewerName || 'Admin';
+                        if (isCurrentUser) {
+                            authorName = 'You';
+                        } else {
+                            const isGeneric = !event.by_name || ['admin', 'administrator', 'system', 'unknown'].includes(String(event.by_name).toLowerCase().trim());
+                            if (!isGeneric) {
+                                authorName = event.by_name;
+                            } else if (recordReviewerName && !['admin', 'administrator', 'system'].includes(String(recordReviewerName).toLowerCase().trim())) {
+                                authorName = recordReviewerName;
+                            } else if (event.by_name) {
+                                authorName = event.by_name;
+                            } else {
+                                authorName = recordReviewerName || 'Admin';
+                            }
+                        }
                     }
 
-                    const commentText = event.comments || event.reason || event.remark;
+                    let commentText = event.comments || event.reason || event.remark;
+                    if (commentText && typeof commentText === 'string') {
+                        if (/^approved by (?:administrator|administration)$/i.test(commentText.trim())) {
+                            const properName = (authorName && !['admin', 'administrator', 'system', 'you'].includes(authorName.toLowerCase()))
+                                ? authorName
+                                : (recordReviewerName && !['admin', 'administrator', 'system'].includes(String(recordReviewerName).toLowerCase()) ? recordReviewerName : null);
+                            if (properName) {
+                                commentText = `Approved by ${properName}`;
+                            }
+                        }
+                    }
 
                     return (
                         <div key={idx} className="relative">
@@ -145,7 +164,7 @@ export default function AuditTrailTimeline({
                                     compact ? 'text-[11px]' : 'text-xs sm:text-sm'
                                 } text-slate-500 dark:text-github-dark-muted font-normal mt-0.5`}
                             >
-                                {event.at ? new Date(event.at).toLocaleString() : 'N/A'} • by {authorName}
+                                {event.at ? formatPlatformDateTime(event.at) : 'N/A'}
                             </p>
                             {commentText && (
                                 <p
@@ -163,3 +182,4 @@ export default function AuditTrailTimeline({
         </div>
     );
 }
+

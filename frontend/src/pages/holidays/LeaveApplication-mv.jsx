@@ -498,9 +498,15 @@ const LeaveApplication = ({ isEmbedded = false }) => {
         }
 
         try {
+            const adminName = user?.user_name || user?.name;
+            const defaultApproveComment = adminName ? `Approved by ${adminName}` : 'Approved by Administrator';
+            const effectiveRemarks = adminAction.remarks?.trim()
+                ? adminAction.remarks.trim()
+                : (isReject ? '' : defaultApproveComment);
+
             const payload = {
                 status: actionStatus.charAt(0).toUpperCase() + actionStatus.slice(1).toLowerCase(),
-                admin_comment: adminAction.remarks,
+                admin_comment: effectiveRemarks,
                 pay_type: adminAction.payType,
                 pay_percentage: adminAction.payType === 'Paid' ? 100 : 0
             };
@@ -521,20 +527,21 @@ const LeaveApplication = ({ isEmbedded = false }) => {
                         by: user?.user_id,
                         by_name: user?.user_name || 'Admin',
                         at: new Date().toISOString(),
-                        comments: adminAction.remarks || null
+                        comments: effectiveRemarks || null
                     }
                 ];
 
                 const updatedLeaves = leaves.map(l =>
                     (l.lr_id === targetId || l.id === targetId)
-                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, audit_trail: updatedTrail }
+                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: effectiveRemarks, reviewer_name: user?.user_name || l.reviewer_name, audit_trail: updatedTrail }
                         : l
                 );
                 setLeaves(updatedLeaves);
                 setSelectedLeave({
                     ...selectedLeave,
                     status: actionStatus.toLowerCase(),
-                    admin_comment: adminAction.remarks,
+                    admin_comment: effectiveRemarks,
+                    reviewer_name: user?.user_name || selectedLeave.reviewer_name,
                     audit_trail: updatedTrail
                 });
                 setAdminAction({ remarks: '', payType: 'Paid', payPercentage: 100 });
@@ -861,7 +868,17 @@ const LeaveApplication = ({ isEmbedded = false }) => {
                                 {selectedLeave.status?.toLowerCase() !== 'pending' && selectedLeave.admin_comment && (
                                     <div className="bg-slate-50 dark:bg-[#0D1117] p-3 rounded-xl border border-slate-200/60 dark:border-[#30363D]">
                                         <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Review Remarks</span>
-                                        <p className="text-xs text-slate-700 dark:text-slate-300">{selectedLeave.admin_comment}</p>
+                                        <p className="text-xs text-slate-700 dark:text-slate-300">
+                                            {(() => {
+                                                const rawRemarks = selectedLeave.admin_comment;
+                                                if (!rawRemarks) return "No remarks provided.";
+                                                if (/^approved by (?:administrator|administration)$/i.test(rawRemarks.trim())) {
+                                                    const revName = selectedLeave.reviewer_name || selectedLeave.reviewed_by_name || user?.user_name;
+                                                    return revName ? `Approved by ${revName}` : rawRemarks;
+                                                }
+                                                return rawRemarks;
+                                            })()}
+                                        </p>
                                     </div>
                                 )}
 
@@ -1154,7 +1171,17 @@ const LeaveApplication = ({ isEmbedded = false }) => {
                             {selectedLeave.admin_comment && (
                                 <div className="bg-slate-50 dark:bg-[#0D1117] p-3.5 rounded-xl border border-slate-200/60 dark:border-[#30363D]">
                                     <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Admin Remarks</span>
-                                    <p className="text-xs text-slate-700 dark:text-slate-300">{selectedLeave.admin_comment}</p>
+                                    <p className="text-xs text-slate-700 dark:text-slate-300">
+                                        {(() => {
+                                            const rawRemarks = selectedLeave.admin_comment;
+                                            if (!rawRemarks) return "No remarks provided.";
+                                            if (/^approved by (?:administrator|administration)$/i.test(rawRemarks.trim())) {
+                                                const revName = selectedLeave.reviewer_name || selectedLeave.reviewed_by_name;
+                                                return revName ? `Approved by ${revName}` : rawRemarks;
+                                            }
+                                            return rawRemarks;
+                                        })()}
+                                    </p>
                                 </div>
                             )}
 

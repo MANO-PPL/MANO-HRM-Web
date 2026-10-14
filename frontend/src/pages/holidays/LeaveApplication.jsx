@@ -489,9 +489,15 @@ const LeaveApplication = ({ mode, onSelectLeave, onLeavesChange, onActiveRangeCh
         if (!selectedLeave) return;
         const actionStatus = status || adminAction.status;
         try {
+            const adminName = user?.user_name || user?.name;
+            const defaultApproveComment = adminName ? `Approved by ${adminName}` : 'Approved by Administrator';
+            const effectiveComment = adminAction.remarks?.trim()
+                ? adminAction.remarks.trim()
+                : (actionStatus.toLowerCase() === 'approved' ? defaultApproveComment : '');
+
             const payload = {
                 status: actionStatus.charAt(0).toUpperCase() + actionStatus.slice(1), // Capitalize for backend
-                admin_comment: adminAction.remarks,
+                admin_comment: effectiveComment,
                 pay_type: adminAction.payType,
                 pay_percentage: adminAction.payPercentage
             };
@@ -511,18 +517,18 @@ const LeaveApplication = ({ mode, onSelectLeave, onLeavesChange, onActiveRangeCh
                         by: user?.user_id,
                         by_name: user?.user_name || 'Admin',
                         at: new Date().toISOString(),
-                        comments: adminAction.remarks || null
+                        comments: effectiveComment || null
                     }
                 ];
 
                 // Update local state
                 const updatedAdminLeaves = adminLeaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
-                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage, audit_trail: updatedTrail }
+                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: effectiveComment, reviewer_name: user?.user_name || l.reviewer_name, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage, audit_trail: updatedTrail }
                         : l
                 );
                 setAdminLeaves(updatedAdminLeaves);
-                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage, audit_trail: updatedTrail });
+                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: effectiveComment, reviewer_name: user?.user_name || selectedLeave.reviewer_name, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage, audit_trail: updatedTrail });
                 setAdminAction({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
             }
         } catch (error) {
