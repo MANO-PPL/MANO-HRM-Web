@@ -16,6 +16,7 @@ import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTour } from '../../context/TourContext';
 import { formatPlatformDate } from '../../utils/dateUtils';
+import { usePageRefresh } from '../../context/PageRefreshContext';
 
 const EMPLOYEE_PAGE_KEY = 'employee_daily_activity';
 const ADMIN_PAGE_KEY = 'admin_dar';
@@ -302,6 +303,8 @@ const DailyActivity = () => {
         d.setDate(d.getDate() + daysToShow);
         setSelectedDate(d.toISOString().split('T')[0]);
     };
+
+    usePageRefresh(fetchRangeData);
 
     const handlePrevRange = () => {
         const d = new Date(selectedDate + 'T12:00:00');

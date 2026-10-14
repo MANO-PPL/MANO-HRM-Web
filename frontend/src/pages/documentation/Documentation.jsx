@@ -27,9 +27,12 @@ import {
     Info, 
     X,
     Laptop,
-    CheckCircle2
+    CheckCircle2,
+    RotateCw
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import api from '../../services/api';
+import { invalidateAllCaches } from '../../utils/cacheManager';
 
 // Helper component to map routes to matching Lucide Icons
 const getModuleIcon = (route) => {
@@ -250,27 +253,42 @@ export default function Documentation() {
     ];
 
     // Fetch guides on mount
-    useEffect(() => {
-        const fetchGuides = async () => {
-            try {
-                const res = await api.get('/website-chatbot/guide');
-                if (res.data?.ok && Array.isArray(res.data?.data)) {
-                    setGuides(res.data.data);
-                    if (res.data.data.length > 0) {
-                        setActiveModule(res.data.data[0]);
-                    }
-                } else {
-                    throw new Error('Malformed server response');
-                }
-            } catch (err) {
-                console.error('Failed to fetch guide details:', err);
-                setError(err.message || 'Unable to fetch user manual data');
-            } finally {
-                setLoading(false);
-            }
-        };
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
-        fetchGuides();
+    const fetchGuides = async (isManualRefresh = false) => {
+        if (isManualRefresh) {
+            setIsRefreshing(true);
+            invalidateAllCaches('Documentation');
+        }
+        try {
+            const res = await api.get('/website-chatbot/guide');
+            if (res.data?.ok && Array.isArray(res.data?.data)) {
+                setGuides(res.data.data);
+                if (res.data.data.length > 0 && !activeModule) {
+                    setActiveModule(res.data.data[0]);
+                }
+                if (isManualRefresh) {
+                    toast.info('Documentation refreshed with latest data', { autoClose: 1800 });
+                }
+            } else {
+                throw new Error('Malformed server response');
+            }
+        } catch (err) {
+            console.error('Failed to fetch guide details:', err);
+            setError(err.message || 'Unable to fetch user manual data');
+            if (isManualRefresh) {
+                toast.error('Failed to refresh documentation');
+            }
+        } finally {
+            setLoading(false);
+            if (isManualRefresh) {
+                setTimeout(() => setIsRefreshing(false), 500);
+            }
+        }
+    };
+
+    useEffect(() => {
+        fetchGuides(false);
     }, []);
 
     // Scroll to top of window when active module changes
@@ -435,9 +453,24 @@ export default function Documentation() {
                     <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-100/30 dark:bg-indigo-900/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
                     
                     <div className="relative z-10 max-w-3xl">
-                        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-800 dark:text-github-dark-text mb-2 font-poppins">
-                            MANO Support Guide
-                        </h2>
+                        <div className="flex items-center justify-between gap-4 mb-2">
+                            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-800 dark:text-github-dark-text font-poppins">
+                                MANO Support Guide
+                            </h2>
+                            <button
+                                onClick={() => fetchGuides(true)}
+                                disabled={isRefreshing}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 cursor-pointer shadow-xs select-none active:scale-95 disabled:cursor-not-allowed ${
+                                    isRefreshing
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60'
+                                        : 'bg-white dark:bg-github-dark-bg hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200 dark:border-github-dark-border'
+                                }`}
+                                title="Refresh documentation data (clears cache)"
+                            >
+                                <RotateCw size={14} className={`${isRefreshing ? 'animate-spin text-indigo-600 dark:text-indigo-400' : ''} transition-transform duration-500`} />
+                                <span>{isRefreshing ? 'Refreshing...' : 'Refresh Guide'}</span>
+                            </button>
+                        </div>
                         <p className="text-sm text-slate-500 dark:text-github-dark-muted mb-6 max-w-xl">
                             Search how to configure shifts, register leaves, review geofence tracking, audit documents, or request attendance corrections on the platform.
                         </p>

@@ -14,11 +14,15 @@ import {
     Volume2,
     Sparkles,
     FileText,
-    MapPin
+    MapPin,
+    RotateCw
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatPlatformDate } from '../../utils/dateUtils';
+import { notificationService } from '../../services/notificationService';
+import { invalidateAllCaches } from '../../utils/cacheManager';
 
 const Notifications = () => {
     const navigate = useNavigate();
@@ -26,6 +30,23 @@ const Notifications = () => {
     const { avatarTimestamp } = useAuth();
     const [localNotifications, setLocalNotifications] = useState([]);
     const [activeTab, setActiveTab] = useState('all'); // 'all' or 'unread'
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        invalidateAllCaches('Notifications');
+        try {
+            const res = await notificationService.getAll(50, false);
+            if (res?.data) {
+                setLocalNotifications(res.data);
+                toast.info('Notifications refreshed with latest data', { autoClose: 1800 });
+            }
+        } catch (_) {
+            toast.info('Notifications refreshed', { autoClose: 1500 });
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 500);
+        }
+    };
 
     useEffect(() => {
         if (notifications && notifications.length > 0) {
@@ -137,15 +158,26 @@ const Notifications = () => {
                     <div className="flex-1 text-center">
                         <h1 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">Notifications</h1>
                     </div>
-                    {unreadCount > 0 && (
+                    <div className="flex items-center gap-1 -mr-2">
                         <button
-                            onClick={() => markAllAsRead()}
-                            className="p-2 -mr-2 text-indigo-600 dark:text-indigo-400 hover:opacity-80"
-                            title="Mark all as read"
+                            onClick={handleRefresh}
+                            disabled={isRefreshing}
+                            className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-colors"
+                            title="Refresh notifications"
+                            aria-label="Refresh notifications"
                         >
-                            <CheckCheck size={20} />
+                            <RotateCw size={18} className={`${isRefreshing ? 'animate-spin text-indigo-600' : ''} transition-transform duration-500`} />
                         </button>
-                    )}
+                        {unreadCount > 0 && (
+                            <button
+                                onClick={() => markAllAsRead()}
+                                className="p-2 text-indigo-600 dark:text-indigo-400 hover:opacity-80"
+                                title="Mark all as read"
+                            >
+                                <CheckCheck size={20} />
+                            </button>
+                        )}
+                    </div>
                 </div>
             </header>
             {/* Main Content Area */}

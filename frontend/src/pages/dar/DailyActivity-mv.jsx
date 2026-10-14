@@ -35,6 +35,7 @@ import TaskCreationPanel from '../../components/dar/TaskCreationPanel';
 import EventMeetingModal from '../../components/dar/EventMeetingModal';
 import { formatPlatformDate } from '../../utils/dateUtils';
 import { formatTaskDuration } from '../../utils/darAdminMetrics';
+import { usePageRefresh } from '../../context/PageRefreshContext';
 
 const getTodayLocalDateString = () => {
     const d = new Date();
@@ -257,6 +258,8 @@ const DailyActivityMobile = () => {
             setLoading(false);
         }
     };
+
+    usePageRefresh(fetchDayData);
 
     const handleCreate = (type) => {
         const createType = (type === 'Task' ? 'TASK' : type.toUpperCase());

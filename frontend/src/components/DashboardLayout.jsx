@@ -10,7 +10,8 @@ import {
     ChevronDown,
     Settings,
     MessageSquare,
-    Eye
+    Eye,
+    RotateCw
 } from 'lucide-react';
 import ProfilePictureModal from './modals/ProfilePictureModal';
 import { useAuth } from '../context/AuthContext';
@@ -20,9 +21,11 @@ import Sidebar from './Sidebar';
 import InternalChatbotWidget from './InternalChatbotWidget';
 import TourTriggerButton from './tour/TourTriggerButton.jsx';
 import { useTour } from '../context/TourContext';
+import { PageRefreshProvider, usePageRefresh } from '../context/PageRefreshContext';
 
-const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hideScrollbar = false, tourPageKey, tourSteps }) => {
+const DashboardLayoutInner = ({ children, title = "Dashboard", noPadding = false, hideScrollbar = false, tourPageKey, tourSteps }) => {
     const { unreadCount } = useNotification();
+    const { pageKey, isRefreshing, triggerRefresh } = usePageRefresh();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -91,6 +94,26 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hid
                             <Menu size={20} />
                         </button>
                         <h1 className="text-xl font-semibold text-slate-800 dark:text-github-dark-text hidden sm:block">{title}</h1>
+                        <button
+                            onClick={triggerRefresh}
+                            disabled={isRefreshing}
+                            id="page-refresh-button"
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-200 cursor-pointer shadow-xs select-none active:scale-95 disabled:cursor-not-allowed ${
+                                isRefreshing
+                                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60'
+                                    : 'bg-white/80 dark:bg-github-dark-subtle/80 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200 dark:border-github-dark-border'
+                            }`}
+                            title={`Refresh ${typeof title === 'string' ? title : 'Page'} (clears cache & reloads fresh data)`}
+                            aria-label={`Refresh ${typeof title === 'string' ? title : 'Page'} data`}
+                        >
+                            <RotateCw
+                                size={13}
+                                className={`${isRefreshing ? 'animate-spin text-indigo-600 dark:text-indigo-400' : 'group-hover:rotate-45'} transition-transform duration-500`}
+                            />
+                            <span className="hidden xl:inline">
+                                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                            </span>
+                        </button>
                         {tourPageKey && tourSteps && (
                             <TourTriggerButton pageKey={tourPageKey} steps={tourSteps} />
                         )}
@@ -219,7 +242,9 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hid
 
                 {/* Scrollable Content Area */}
                 <main className={`flex-1 flex flex-col ${noPadding ? '' : 'p-3'} ${shouldHideScrollbar ? 'no-scrollbar' : ''} bg-slate-50/50 dark:bg-github-dark-bg transition-colors duration-300 mt-16`}>
-                    {children}
+                    <React.Fragment key={pageKey}>
+                        {children}
+                    </React.Fragment>
                 </main>
             </div>
             <InternalChatbotWidget />
@@ -235,6 +260,14 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hid
                 phone={user?.phone_no}
             />
         </div>
+    );
+};
+
+const DashboardLayout = (props) => {
+    return (
+        <PageRefreshProvider pageTitle={typeof props.title === 'string' ? props.title : 'Page'} onRefresh={props.onRefresh}>
+            <DashboardLayoutInner {...props} />
+        </PageRefreshProvider>
     );
 };
 

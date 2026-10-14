@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Bell, Moon, Sun, ArrowLeft, MessageSquare } from 'lucide-react';
+import { Menu, Bell, Moon, Sun, ArrowLeft, MessageSquare, RotateCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileSidebar from './MobileSidebar';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import InternalChatbotWidget from './InternalChatbotWidget';
+import { PageRefreshProvider, usePageRefresh } from '../context/PageRefreshContext';
 
-const MobileDashboardLayout = ({ 
+const MobileDashboardLayoutInner = ({ 
     children, 
     title = "Dashboard", 
     hideHeader = false, 
@@ -19,6 +20,7 @@ const MobileDashboardLayout = ({
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { unreadCount } = useNotification();
     const { user, avatarTimestamp } = useAuth();
+    const { pageKey, isRefreshing, triggerRefresh } = usePageRefresh();
 
     // Initialize theme from localStorage or system preference
     const [theme, setTheme] = useState(() => {
@@ -96,8 +98,23 @@ const MobileDashboardLayout = ({
                             </h1>
                         </div>
 
-                        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
                             {headerAction}
+                            {/* Dedicated Page Refresh Button */}
+                            <button
+                                onClick={triggerRefresh}
+                                disabled={isRefreshing}
+                                id="mobile-page-refresh-btn"
+                                className={`p-1.5 rounded-lg border transition-all duration-200 flex items-center justify-center active:scale-95 disabled:cursor-not-allowed ${
+                                    isRefreshing
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60'
+                                        : 'bg-slate-100/80 dark:bg-[#161B22] text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/80 dark:border-[#30363D]'
+                                }`}
+                                title={`Refresh ${title} data`}
+                                aria-label="Refresh Page"
+                            >
+                                <RotateCw size={15} className={`${isRefreshing ? 'animate-spin text-indigo-600 dark:text-indigo-400' : ''} transition-transform duration-500`} />
+                            </button>
                             <button
                                 onClick={toggleTheme}
                                 className="p-1 text-slate-500 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
@@ -165,10 +182,20 @@ const MobileDashboardLayout = ({
                 }}
                 className={contentClassName !== undefined ? contentClassName : 'px-3.5 pt-3 space-y-4 sm:space-y-6'}
             >
-                {children}
+                <React.Fragment key={pageKey}>
+                    {children}
+                </React.Fragment>
             </main>
             <InternalChatbotWidget />
         </div>
+    );
+};
+
+const MobileDashboardLayout = (props) => {
+    return (
+        <PageRefreshProvider pageTitle={typeof props.title === 'string' ? props.title : 'Page'} onRefresh={props.onRefresh}>
+            <MobileDashboardLayoutInner {...props} />
+        </PageRefreshProvider>
     );
 };
 
