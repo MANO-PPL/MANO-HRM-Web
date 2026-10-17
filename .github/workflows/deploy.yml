@@ -66,6 +66,7 @@ jobs:
         env:
           VITE_RECAPTCHA_SITE_KEY: "6Lf49jksAAAAAG9BCGdoBfzCSJZF72EEEAn-ue0b"
           VITE_ENABLE_CAPTCHA: "true"
+          VITE_CARTO_API_KEY: ${{ secrets.VITE_CARTO_API_KEY }}
           # VITE_BACKEND_URL points to the backend API/socket origin.
           # The frontend socket will connect to this URL directly,
           # bypassing the Nginx static file server to avoid WebSocket proxy issues.
