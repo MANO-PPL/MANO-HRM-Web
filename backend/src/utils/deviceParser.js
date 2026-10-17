@@ -96,10 +96,14 @@ export function extractDeviceInfo(req, userId = null) {
         deviceName = parsed.device_label || 'Unknown Device';
     }
 
+    const clientType = req?.get ? (req.get('x-client-type') || '') : (req?.headers?.['x-client-type'] || '');
+    const isMobileClientHeader = typeof clientType === 'string' && clientType.trim().toLowerCase() === 'mobile';
+    const effectiveDeviceType = isMobileClientHeader ? 'mobile' : parsed.device_type;
+
     const metadata = {
         device_id: deviceId,
         device_name: deviceName,
-        device_type: parsed.device_type,
+        device_type: effectiveDeviceType,
         os: parsed.os,
         browser: parsed.browser,
         last_active_at: new Date().toISOString(),

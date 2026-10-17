@@ -43,28 +43,139 @@ async function findSessionRowByToken(token) {
 }
 
 /**
+ * Internal helper to mark active sessions as revoked with reason and timestamp.
+ * Enforces `revoked: 0` guard so that original revocation audit trails are preserved
+ * and duplicate updates are avoided.
+ *
+ * @param {object|Function} filter - Knex query filter object or modifier callback
+ * @param {string} [reason='revoked'] - Revocation reason tag
+ * @param {object} [trx] - Optional Knex transaction
+ * @returns {Promise<number>} Number of updated rows
+ */
+export async function markSessionsRevoked(filter, reason = 'revoked', trx = null) {
+    const db = trx || attendanceDB;
+    let query = db('sessions');
+
+    if (typeof filter === 'function') {
+        query = filter(query);
+    } else if (filter) {
+        query = query.where(filter);
+    }
+
+    return await query
+        .where('revoked', 0)
+        .update({
+            revoked: 1,
+            revoked_at: toMySQLDateTime(new Date()),
+            revoked_reason: reason
+        });
+}
+
+/**
+ * Revokes active sessions for a user on a specific device, optionally excluding one session ID.
+ * Used during login device deduplication.
+ *
+ * @param {object} params
+ * @param {number} params.userId
+ * @param {string} params.deviceId
+ * @param {number} [params.exceptSessionId]
+ * @param {string} [params.reason='superseded_by_new_login']
+ * @param {object} [params.trx]
+ * @returns {Promise<number>}
+ */
+export async function revokeUserDeviceSessions({
+    userId,
+    deviceId,
+    exceptSessionId = null,
+    reason = 'superseded_by_new_login',
+    trx = null
+} = {}) {
+    return await markSessionsRevoked(q => {
+        let builder = q.where({ user_id: userId, device_id: deviceId });
+        if (exceptSessionId) {
+            builder = builder.whereNot({ id: exceptSessionId });
+        }
+        return builder;
+    }, reason, trx);
+}
+
+/**
+ * Normalizes device fields for a session row, enriching missing/generic metadata from User-Agent.
+ *
+ * @param {object} row
+ * @returns {{browser: string, os: string, osVersion: string, browserVersion: string, devType: string, devName: string}}
+ */
+function resolveSessionDeviceInfo(row) {
+    let browser = row.browser;
+    let os = row.os;
+    let osVersion = '';
+    let browserVersion = '';
+    let devType = row.device_type || 'desktop';
+    let devName = row.device_name;
+
+    if ((!browser || browser === 'Unknown Browser' || !os || os === 'Unknown OS') && row.user_agent) {
+        const parsed = parseUserAgent(row.user_agent);
+        if (parsed.browser && parsed.browser !== 'Unknown Browser') browser = parsed.browser;
+        if (parsed.browser_version) browserVersion = parsed.browser_version;
+        if (parsed.os && parsed.os !== 'Unknown OS') os = parsed.os;
+        if (parsed.os_version) osVersion = parsed.os_version;
+        if (parsed.device_type) devType = parsed.device_type;
+        if (parsed.device_label && (!devName || devName === 'Migrated Device' || devName === 'Unknown Device')) {
+            devName = parsed.device_label;
+        }
+    }
+
+    devName = devName || `${browser || 'Browser'} on ${os || 'Device'}`;
+
+    return {
+        browser: browser || 'Browser',
+        os: os || 'Unknown OS',
+        osVersion,
+        browserVersion,
+        devType,
+        devName
+    };
+}
+
+/**
  * 1. Create a session row in the consolidated `sessions` table.
  * Preserves per-device deduplication on login:
  * Repeat logins on the same device_id replace that device's row (updating in-place),
  * with NO rotation semantics attached.
  *
- * @param {object} params
- * @param {number} params.userId
- * @param {string} params.token - Raw refresh token (will be SHA-256 hashed)
- * @param {string} [params.ipAddress]
- * @param {string} [params.userAgent]
- * @param {boolean} [params.rememberMe]
- * @param {object} [params.deviceInfo] - Extracted device metadata
+ * @param {object|number} paramsOrUserId - Parameter object or numeric userId for backward compatibility
+ * @param {string} [legacyToken]
+ * @param {string} [legacyIp]
+ * @param {string} [legacyUa]
+ * @param {object} [legacyDeviceInfo]
  * @returns {Promise<number>} Inserted/updated session ID (carried in access token as `sid`)
  */
-export async function createSession({
-    userId,
-    token,
-    ipAddress = '',
-    userAgent = '',
-    rememberMe = false,
-    deviceInfo = null
-}) {
+export async function createSession(paramsOrUserId, legacyToken = null, legacyIp = '', legacyUa = '', legacyDeviceInfo = null) {
+    let userId;
+    let token;
+    let ipAddress = '';
+    let userAgent = '';
+    let rememberMe = false;
+    let deviceInfo = null;
+
+    if (paramsOrUserId && typeof paramsOrUserId === 'object') {
+        ({
+            userId,
+            token,
+            ipAddress = '',
+            userAgent = '',
+            rememberMe = false,
+            deviceInfo = null
+        } = paramsOrUserId);
+    } else {
+        userId = paramsOrUserId;
+        token = legacyToken;
+        ipAddress = legacyIp || '';
+        userAgent = legacyUa || '';
+        deviceInfo = legacyDeviceInfo || null;
+        rememberMe = false;
+    }
+
     const now = new Date();
     const expiresAt = new Date(now);
     const validityDays = 30; // 30-day sliding session
@@ -106,7 +217,23 @@ export async function createSession({
     const cleanIp = ipAddress ? String(ipAddress).substring(0, 45) : null;
     const cleanUa = userAgent ? String(userAgent).substring(0, 2000) : null;
 
-    // Per-device dedup on login:
+    // 1. Mobile Device Single-Active-User Displacement:
+    // A physical mobile device (identified by cleanDeviceId) can only be operated by one user at a time.
+    // If a different user logs in on this mobile device, revoke any prior active sessions belonging to
+    // other users on this device so the server never shows multiple concurrent active sessions for the same phone.
+    const isMobileDevice = cleanDeviceType === 'mobile' || cleanDeviceType === 'tablet';
+    if (isMobileDevice && cleanDeviceId && !cleanDeviceId.startsWith('dvc_')) {
+        try {
+            await markSessionsRevoked(
+                q => q.where({ device_id: cleanDeviceId }).whereNot({ user_id: userId }),
+                'device_displaced_by_other_user'
+            );
+        } catch (e) {
+            console.warn('[sessionService] Mobile device displacement warning:', e.message);
+        }
+    }
+
+    // 2. Per-device dedup on login:
     // If the user already has an active session on this exact device_id,
     // replace that device's row — treat this purely as extending/replacing
     // that one session, with no rotation semantics attached to it.
@@ -135,10 +262,30 @@ export async function createSession({
                     revoked_at: null,
                     revoked_reason: null
                 });
+
+            // Clean up any other stray active rows for this user on this device
+            await revokeUserDeviceSessions({
+                userId,
+                deviceId: cleanDeviceId,
+                exceptSessionId: existingSession.id,
+                reason: 'superseded_by_new_login'
+            });
+
             return existingSession.id;
         }
     } catch (e) {
         console.warn('[sessionService] Device deduplication check warning:', e.message);
+    }
+
+    // Invalidate any older unrevoked sessions for this user on this device before creating a new one
+    try {
+        await revokeUserDeviceSessions({
+            userId,
+            deviceId: cleanDeviceId,
+            reason: 'superseded_by_new_login'
+        });
+    } catch (e) {
+        console.warn('[sessionService] Clean prior device sessions warning:', e.message);
     }
 
     // Insert new session row
@@ -251,21 +398,30 @@ export async function extendSession(token, reqInfo = null) {
 /**
  * 4. Revoke a single session.
  * Scope constraint: MUST ONLY ever terminate the ONE targeted session.
+ * Supports both object payload and positional arguments for maximum robustness.
  *
- * @param {object} target
- * @param {number} [target.sessionId] - Session primary key
- * @param {string} [target.token] - Raw refresh token
- * @param {number} [target.userId] - Optional owner check for user self-service
- * @param {string} [target.reason='manual_revocation']
- * @returns {Promise<{success: boolean, message: string}>}
+ * @param {object|number|string} target - Options object, numeric sessionId, or token string
+ * @param {string} [legacyReason] - Revocation reason tag when called with positional arguments
+ * @returns {Promise<{success: boolean, message: string, sessionId: number|null}>}
  */
-export async function revokeSession({
-    sessionId = null,
-    token = null,
-    userId = null,
-    reason = 'manual_revocation'
-} = {}) {
-    const now = toMySQLDateTime(new Date());
+export async function revokeSession(target = {}, legacyReason = null) {
+    let sessionId = null;
+    let token = null;
+    let userId = null;
+    let reason = 'manual_revocation';
+
+    if (typeof target === 'number') {
+        sessionId = target;
+        if (legacyReason) reason = legacyReason;
+    } else if (typeof target === 'string') {
+        token = target;
+        if (legacyReason) reason = legacyReason;
+    } else if (target && typeof target === 'object') {
+        sessionId = target.sessionId ?? null;
+        token = target.token ?? null;
+        userId = target.userId ?? null;
+        reason = target.reason || legacyReason || 'manual_revocation';
+    }
 
     if (sessionId) {
         const query = attendanceDB('sessions').where({ id: sessionId });
@@ -276,14 +432,12 @@ export async function revokeSession({
             throw new AppError('Session not found or already revoked', 404, AUTH_ERROR_CODES.SESSION_NOT_FOUND);
         }
 
-        await attendanceDB('sessions')
-            .where({ id: sessionId })
-            .update({
-                revoked: 1,
-                revoked_at: now,
-                revoked_reason: reason
-            });
+        // If already revoked, return early preserving original revocation audit timestamp
+        if (session.revoked) {
+            return { success: true, message: 'Session already revoked', sessionId: session.id };
+        }
 
+        await markSessionsRevoked({ id: session.id }, reason);
         return { success: true, message: 'Session revoked successfully', sessionId: session.id };
     }
 
@@ -291,14 +445,11 @@ export async function revokeSession({
         const session = await findSessionRowByToken(token);
         if (!session) return { success: false, message: 'Session not found', sessionId: null };
 
-        await attendanceDB('sessions')
-            .where({ id: session.id })
-            .update({
-                revoked: 1,
-                revoked_at: now,
-                revoked_reason: reason
-            });
+        if (session.revoked) {
+            return { success: true, message: 'Session already revoked', sessionId: session.id };
+        }
 
+        await markSessionsRevoked({ id: session.id }, reason);
         return { success: true, message: 'Session revoked successfully', sessionId: session.id };
     }
 
@@ -325,27 +476,20 @@ export async function revokeAllSessions(userId, {
     reason = 'sign_out_everywhere',
     trx = null
 } = {}) {
-    const db = trx || attendanceDB;
-    const now = toMySQLDateTime(new Date());
+    const count = await markSessionsRevoked(q => {
+        let builder = q.where('user_id', userId);
 
-    let query = db('sessions')
-        .where('user_id', userId)
-        .where('revoked', 0);
+        if (exceptToken) {
+            const hashed = hashRefreshToken(exceptToken);
+            builder = builder.whereNotIn('token_hash', [hashed, String(exceptToken)]);
+        }
 
-    if (exceptToken) {
-        const hashed = hashRefreshToken(exceptToken);
-        query = query.whereNotIn('token_hash', [hashed, String(exceptToken)]);
-    }
+        if (exceptSessionId) {
+            builder = builder.whereNot('id', exceptSessionId);
+        }
 
-    if (exceptSessionId) {
-        query = query.whereNot('id', exceptSessionId);
-    }
-
-    const count = await query.update({
-        revoked: 1,
-        revoked_at: now,
-        revoked_reason: reason
-    });
+        return builder;
+    }, reason, trx);
 
     return {
         success: true,
@@ -366,20 +510,15 @@ export async function revokeSessions(sessionIds = [], { reason = 'superadmin_bul
         throw new AppError('No session IDs provided', 400);
     }
 
-    const now = toMySQLDateTime(new Date());
-    const updated = await attendanceDB('sessions')
-        .whereIn('id', sessionIds)
-        .where('revoked', 0)
-        .update({
-            revoked: 1,
-            revoked_at: now,
-            revoked_reason: reason
-        });
+    const count = await markSessionsRevoked(
+        q => q.whereIn('id', sessionIds),
+        reason
+    );
 
     return {
         success: true,
-        count: updated,
-        message: `${updated} sessions revoked successfully`
+        count,
+        message: `${count} sessions revoked successfully`
     };
 }
 
@@ -406,20 +545,7 @@ export async function listSessions(options = {}) {
         const currentSid = options.currentSessionId ? Number(options.currentSessionId) : null;
 
         return rows.map((row) => {
-            let browser = row.browser;
-            let os = row.os;
-            let devType = row.device_type || 'desktop';
-            let devName = row.device_name;
-
-            if ((!browser || browser === 'Unknown Browser' || !os || os === 'Unknown OS') && row.user_agent) {
-                const parsed = parseUserAgent(row.user_agent);
-                if (parsed.browser && parsed.browser !== 'Unknown Browser') browser = parsed.browser;
-                if (parsed.os && parsed.os !== 'Unknown OS') os = parsed.os;
-                if (parsed.device_type) devType = parsed.device_type;
-                if (parsed.device_label && (!devName || devName === 'Migrated Device' || devName === 'Unknown Device')) {
-                    devName = parsed.device_label;
-                }
-            }
+            const device = resolveSessionDeviceInfo(row);
 
             const isCurrent = Boolean(
                 (currentSid && row.id === currentSid) ||
@@ -429,10 +555,10 @@ export async function listSessions(options = {}) {
             return {
                 id: row.id,
                 device_id: row.device_id,
-                device_name: devName || `${browser || 'Browser'} on ${os || 'Device'}`,
-                device_type: devType,
-                browser: browser || 'Browser',
-                os: os || 'Unknown OS',
+                device_name: device.devName,
+                device_type: device.devType,
+                browser: device.browser,
+                os: device.os,
                 ip_address: row.ip_address || 'Dynamic IP',
                 last_active_at: row.last_used_at || row.created_at,
                 created_at: row.created_at,
@@ -605,30 +731,13 @@ export async function listSessions(options = {}) {
             ? `${tokenStr.substring(0, 8)}...${tokenStr.substring(tokenStr.length - 8)}`
             : tokenStr;
 
-        let browser = row.browser;
-        let os = row.os;
-        let osVersion = '';
-        let browserVersion = '';
-        let devType = row.device_type || 'desktop';
-        let devName = row.device_name;
-
-        if ((!browser || browser === 'Unknown Browser' || !os || os === 'Unknown OS') && row.user_agent) {
-            const parsed = parseUserAgent(row.user_agent);
-            if (parsed.browser && parsed.browser !== 'Unknown Browser') browser = parsed.browser;
-            if (parsed.browser_version) browserVersion = parsed.browser_version;
-            if (parsed.os && parsed.os !== 'Unknown OS') os = parsed.os;
-            if (parsed.os_version) osVersion = parsed.os_version;
-            if (parsed.device_type) devType = parsed.device_type;
-            if (parsed.device_label && (!devName || devName === 'Migrated Device' || devName === 'Unknown Device')) {
-                devName = parsed.device_label;
-            }
-        }
+        const device = resolveSessionDeviceInfo(row);
 
         return {
             id: row.id,
             user_id: row.user_id,
             device_id: row.device_id,
-            device_name: devName || `${browser || 'Browser'} on ${os || 'Device'}`,
+            device_name: device.devName,
             last_active_at: row.last_used_at || row.created_at,
             token_preview: tokenPreview,
             token: row.token_hash,
@@ -658,17 +767,17 @@ export async function listSessions(options = {}) {
             device: {
                 raw: row.user_agent || '',
                 device_id: row.device_id,
-                device_name: devName || `${browser || 'Browser'} on ${os || 'Device'}`,
+                device_name: device.devName,
                 last_active_at: row.last_used_at,
-                device_type: devType,
-                os: os || 'Unknown OS',
-                os_version: osVersion,
-                browser: browser || 'Unknown Browser',
-                browser_version: browserVersion,
-                is_mobile: devType === 'mobile',
-                is_tablet: devType === 'tablet',
-                is_desktop: devType === 'desktop',
-                is_api: devType === 'api_client'
+                device_type: device.devType,
+                os: device.os,
+                os_version: device.osVersion,
+                browser: device.browser,
+                browser_version: device.browserVersion,
+                is_mobile: device.devType === 'mobile',
+                is_tablet: device.devType === 'tablet',
+                is_desktop: device.devType === 'desktop',
+                is_api: device.devType === 'api_client'
             }
         };
     });
@@ -691,34 +800,28 @@ export async function listSessions(options = {}) {
  * @returns {Promise<object>}
  */
 export async function getSessionMetrics() {
-    const now = new Date();
+    const nowStr = toMySQLDateTime(new Date());
 
-    const [
-        totalRes,
-        activeRes,
-        revokedRes,
-        expiredRes,
-        mobileRes,
-        desktopRes,
-        uniqueUsersRes
-    ] = await Promise.all([
-        attendanceDB('sessions').count('* as count').first(),
-        attendanceDB('sessions').where('revoked', 0).where('expires_at', '>', now).count('* as count').first(),
-        attendanceDB('sessions').where('revoked', 1).count('* as count').first(),
-        attendanceDB('sessions').where('revoked', 0).where('expires_at', '<=', now).count('* as count').first(),
-        attendanceDB('sessions').where('device_type', 'mobile').count('* as count').first(),
-        attendanceDB('sessions').where('device_type', 'desktop').count('* as count').first(),
-        attendanceDB('sessions').where('revoked', 0).where('expires_at', '>', now).countDistinct('user_id as count').first()
-    ]);
+    const stats = await attendanceDB('sessions')
+        .select(
+            attendanceDB.raw('COUNT(*) as total'),
+            attendanceDB.raw('COUNT(CASE WHEN revoked = 0 AND expires_at > ? THEN 1 END) as active', [nowStr]),
+            attendanceDB.raw('COUNT(CASE WHEN revoked = 1 THEN 1 END) as revoked'),
+            attendanceDB.raw('COUNT(CASE WHEN revoked = 0 AND expires_at <= ? THEN 1 END) as expired', [nowStr]),
+            attendanceDB.raw("COUNT(CASE WHEN device_type = 'mobile' THEN 1 END) as mobile"),
+            attendanceDB.raw("COUNT(CASE WHEN device_type = 'desktop' THEN 1 END) as desktop"),
+            attendanceDB.raw('COUNT(DISTINCT CASE WHEN revoked = 0 AND expires_at > ? THEN user_id END) as unique_active_users', [nowStr])
+        )
+        .first();
 
     return {
-        total: totalRes ? parseInt(totalRes.count, 10) : 0,
-        active: activeRes ? parseInt(activeRes.count, 10) : 0,
-        revoked: revokedRes ? parseInt(revokedRes.count, 10) : 0,
-        expired: expiredRes ? parseInt(expiredRes.count, 10) : 0,
-        mobile: mobileRes ? parseInt(mobileRes.count, 10) : 0,
-        desktop: desktopRes ? parseInt(desktopRes.count, 10) : 0,
-        unique_active_users: uniqueUsersRes ? parseInt(uniqueUsersRes.count, 10) : 0
+        total: stats ? parseInt(stats.total, 10) || 0 : 0,
+        active: stats ? parseInt(stats.active, 10) || 0 : 0,
+        revoked: stats ? parseInt(stats.revoked, 10) || 0 : 0,
+        expired: stats ? parseInt(stats.expired, 10) || 0 : 0,
+        mobile: stats ? parseInt(stats.mobile, 10) || 0 : 0,
+        desktop: stats ? parseInt(stats.desktop, 10) || 0 : 0,
+        unique_active_users: stats ? parseInt(stats.unique_active_users, 10) || 0 : 0
     };
 }
 
@@ -728,19 +831,15 @@ export async function getSessionMetrics() {
  */
 export async function cleanupExpiredSessions() {
     const now = new Date();
-    const updated = await attendanceDB('sessions')
-        .where('expires_at', '<', now)
-        .where('revoked', 0)
-        .update({
-            revoked: 1,
-            revoked_at: toMySQLDateTime(now),
-            revoked_reason: 'expired_cleanup'
-        });
+    const count = await markSessionsRevoked(
+        q => q.where('expires_at', '<', now),
+        'expired_cleanup'
+    );
 
     return {
         success: true,
-        count: updated,
-        message: `${updated} expired sessions cleaned up`
+        count,
+        message: `${count} expired sessions cleaned up`
     };
 }
 

@@ -15,6 +15,8 @@ test('sessionService exports all required core methods', () => {
     assert.equal(typeof sessionService.cleanupOldSessions, 'function');
     assert.equal(typeof sessionService.hashRefreshToken, 'function');
     assert.equal(typeof sessionService.generateToken, 'function');
+    assert.equal(typeof sessionService.markSessionsRevoked, 'function');
+    assert.equal(typeof sessionService.revokeUserDeviceSessions, 'function');
 });
 
 test('hashRefreshToken produces standard 64-character SHA-256 hex string', () => {
